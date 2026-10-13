@@ -1341,4 +1341,6 @@
   <string name="memory_mode_preview">预览</string>
   <string name="memory_mode_edit">编辑</string>
   <string name="memory_discard">放弃</string>
+  <string name="chat_character_input_hint">对%1$s说点什么…</string>
+  <string name="chat_character_typing">%1$s 正在回复…</string>
 </resources>

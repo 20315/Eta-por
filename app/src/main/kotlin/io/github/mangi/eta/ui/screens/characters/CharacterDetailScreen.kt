@@ -2,11 +2,6 @@ package io.github.mangi.eta.ui.screens.characters
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,32 +10,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.agent.roleplay.CharacterCardFormat
+import io.github.mangi.eta.agent.roleplay.CharacterMacros
 import io.github.mangi.eta.agent.roleplay.RoleplayBinding
 import io.github.mangi.eta.ui.app.CharacterLibraryStore
 import io.github.mangi.eta.ui.components.EtaArrowPreference
-import io.github.mangi.eta.ui.components.EtaCard
-import io.github.mangi.eta.ui.components.EtaPreferenceDefaults
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
-import io.github.mangi.eta.ui.components.EtaRadioButtonPreference
 import io.github.mangi.eta.ui.components.EtaSwitchPreference
-import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.EtaWindowDialog
 import io.github.mangi.eta.ui.components.ItemDescriptionDialog
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.navigation.AppRoute
 import top.yukonga.miuix.kmp.basic.BasicComponentColors
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val DescriptionPreviewChars = 220
-private const val GreetingPreviewChars = 240
+
+internal fun greetingTitle(index: Int) = if (index == 0) "默认开场白" else "开场白 ${index + 1}"
 
 private data class CharacterTextPreview(val title: String, val text: String)
 
@@ -61,63 +51,30 @@ internal fun CharacterDetailScreen(
     val jsonExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) {
         if (it != null) store.export(id, CharacterCardFormat.JSON, it)
     }
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) store.changeAvatar(id, uri)
+    }
     val profile = store.selected?.takeIf { it.id == id }
-    MiuixScaffoldPage(title = profile?.card?.name ?: "角色详情", onBack = onBack) {
+    MiuixScaffoldPage(title = "", onBack = onBack, compactTitle = true) {
         if (profile == null) {
             item { CharacterPageMessage(if (store.busy) "正在读取角色…" else "无法读取角色，请返回后重试") }
             return@MiuixScaffoldPage
         }
-        item(key = "profile") {
-            EtaCard(
-                modifier = Modifier.padding(horizontal = CharacterCardPadding).padding(top = 8.dp, bottom = 12.dp),
-                insideMargin = PaddingValues(16.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(profile.card.name, style = MiuixTheme.textStyles.title2)
-                    if (profile.card.tags.isNotEmpty()) {
-                        Text(
-                            text = profile.card.tags.joinToString(" · "),
-                            style = MiuixTheme.textStyles.body2,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                if (profile.card.description.isNotBlank()) {
-                    Text(
-                        text = profile.card.description,
-                        style = MiuixTheme.textStyles.body2,
-                        modifier = Modifier.padding(top = 12.dp),
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis,
+        val userName = if (store.usePersona) store.persona.name.ifBlank { "用户" } else "用户"
+        item(key = "hero") {
+            CharacterHero(
+                profile = profile,
+                busy = store.busy,
+                onChangeAvatar = { avatarPicker.launch("image/*") },
+                onToggleFavorite = { store.toggleFavorite(id) },
+                onStart = { store.startConversation(id, onStart) },
+                onReadDescription = {
+                    preview = CharacterTextPreview(
+                        "角色设定",
+                        CharacterMacros.expand(profile.card.description, profile.card, userName),
                     )
-                    if (profile.card.description.length > DescriptionPreviewChars) {
-                        Text(
-                            text = "阅读全文",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .clickable {
-                                    preview = CharacterTextPreview("角色设定", profile.card.description)
-                                }
-                                .padding(vertical = 4.dp),
-                        )
-                    }
-                }
-            }
-        }
-        item(key = "start") {
-            EtaTextButton(
-                text = "开始新对话",
-                enabled = !store.busy,
-                onClick = { store.startConversation(id, onStart) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = CharacterCardPadding)
-                    .padding(bottom = EtaPreferenceDefaults.GroupSpacing),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
+                },
+                userName = userName,
             )
         }
         item(key = "persona") {
@@ -134,40 +91,17 @@ internal fun CharacterDetailScreen(
         }
         item(key = "greetings-title") { EtaPreferenceGroupTitle("开场白") }
         item(key = "greetings") {
-            EtaPreferenceGroup {
-                val greetings = listOf(profile.card.firstMessage) + profile.card.alternateGreetings
-                greetings.forEachIndexed { index, greeting ->
-                    if (index > 0) EtaPreferenceDivider(hasLeading = false)
-                    EtaRadioButtonPreference(
-                        title = if (index == 0) "默认开场白" else "开场白 ${index + 1}",
-                        summary = greeting.take(GreetingPreviewChars)
-                            .let { if (greeting.length > GreetingPreviewChars) "$it…" else it }
-                            .ifBlank { "没有预设开场白，由你先开口" },
-                        selected = store.greetingIndex == index,
-                        onClick = { store.greetingIndex = index },
-                        bottomAction = if (greeting.length > GreetingPreviewChars) {
-                            {
-                                Text(
-                                    text = "阅读全文",
-                                    style = MiuixTheme.textStyles.footnote1,
-                                    color = MiuixTheme.colorScheme.primary,
-                                    // bottomAction 已经提供行内边距，这里只扩大可点区域。
-                                    modifier = Modifier
-                                        .clickable {
-                                            preview = CharacterTextPreview(
-                                                if (index == 0) "默认开场白" else "开场白 ${index + 1}",
-                                                greeting,
-                                            )
-                                        }
-                                        .padding(vertical = 4.dp),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                    )
-                }
+            // 预览与开始对话后看到的文本一致：宏按当前是否使用人设展开。
+            val greetings = remember(profile.card, userName) {
+                (listOf(profile.card.firstMessage) + profile.card.alternateGreetings)
+                    .map { CharacterMacros.expand(it, profile.card, userName) }
             }
+            GreetingPager(
+                greetings = greetings,
+                selected = store.greetingIndex,
+                onSelect = { store.greetingIndex = it },
+                onRead = { index -> preview = CharacterTextPreview(greetingTitle(index), greetings[index]) },
+            )
         }
         item(key = "management-title") { EtaPreferenceGroupTitle("管理") }
         item(key = "management") {

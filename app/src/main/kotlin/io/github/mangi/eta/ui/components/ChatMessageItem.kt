@@ -1,31 +1,23 @@
 package io.github.mangi.eta.ui.components
 
-import io.github.mangi.eta.ui.voice.SpeechReadAloudButton
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -35,11 +27,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -65,20 +59,26 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,6 +101,7 @@ import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.ToolSummaryMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
+import io.github.mangi.eta.ui.voice.SpeechReadAloudButton
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -576,6 +577,8 @@ private fun AgentMessageBlock(
         }
     }
 
+    val character = LocalRoleplayChat.current.takeUnless { assistantOverlay }
+    val isGreeting = character != null && message.id.startsWith(GreetingMessagePrefix)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -584,6 +587,9 @@ private fun AgentMessageBlock(
                 vertical = 8.dp,
             ),
     ) {
+        if (character != null) {
+            CharacterReplyHeader(character = character, isGreeting = isGreeting)
+        }
         when {
             message.content.isBlank() && message.isStreaming -> {
                 AITypingIndicator(
@@ -688,6 +694,50 @@ private fun AgentMessageBlock(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 开场白消息由开始对话时写入，标识前缀与写入方保持一致。 */
+private const val GreetingMessagePrefix = "greeting-"
+
+/**
+ * 角色回复的署名行：小头像加角色名，开场白额外标注“故事开始”。
+ * 正文保持与普通回答同宽，避免为头像缩进后长段落在窄屏上过于拥挤。
+ */
+@Composable
+private fun CharacterReplyHeader(character: RoleplayChatUi, isGreeting: Boolean) {
+    Row(
+        modifier = Modifier.padding(bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CharacterAvatar(
+            name = character.characterName,
+            avatarPath = character.avatarPath,
+            size = 28.dp,
+            shape = CircleShape,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = character.characterName,
+            style = MiuixTheme.textStyles.body2,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (isGreeting) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.chat_character_story_start),
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
     }
 }

@@ -261,9 +261,17 @@ internal fun AgentChatInputBar(
                 ) {
                     // 占位文字与输入正文共用同一行高，首字输入时基线不跳动。
                     val inputTextStyle = MiuixTheme.textStyles.body1.copy(lineHeight = 22.sp)
+                    val character = LocalRoleplayChat.current
                     if (textFieldState.text.isBlank()) {
                         Text(
-                            text = if (isStreaming) stringResource(R.string.chat_eta_working) else stringResource(R.string.chat_input_hint),
+                            text = when {
+                                // 角色对话的占位文字跟随角色，避免“交给 Eta”打断沉浸感。
+                                character != null && isStreaming ->
+                                    stringResource(R.string.chat_character_typing, character.characterName)
+                                character != null -> stringResource(R.string.chat_character_input_hint, character.characterName)
+                                isStreaming -> stringResource(R.string.chat_eta_working)
+                                else -> stringResource(R.string.chat_input_hint)
+                            },
                             style = inputTextStyle,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )

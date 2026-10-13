@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.components
 
-import io.github.mangi.eta.ui.voice.SpeechPlaybackHost
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -35,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.DocumentScanner
@@ -60,18 +60,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -92,6 +92,7 @@ import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.ToolSummaryMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.latestContextUsage
+import io.github.mangi.eta.ui.voice.SpeechPlaybackHost
 import kotlin.math.exp
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
@@ -115,7 +116,6 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleSurface
-import androidx.compose.ui.text.style.TextOverflow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -159,7 +159,6 @@ internal fun AgentChatBody(
     onSuggestionClick: (String) -> Unit,
     onRunTraceClick: () -> Unit,
     onOpenBrowser: () -> Unit,
-    characterName: String? = null,
     isDrawerOpen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -232,7 +231,6 @@ internal fun AgentChatBody(
             pendingFileReferences = pendingFileReferences,
             messageEdit = messageEdit,
             showEmptySuggestions = !isKeyboardVisible,
-            characterName = characterName,
             keepBottomAnchored = keepBottomAnchored,
             onBottomAnchorChanged = { keepBottomAnchored = it },
             onSubmit = { text ->
@@ -284,7 +282,6 @@ private fun AgentChatScaffold(
     pendingFileReferences: List<PendingFileReferenceUi>,
     messageEdit: MessageEditUiState?,
     showEmptySuggestions: Boolean,
-    characterName: String?,
     keepBottomAnchored: Boolean,
     onBottomAnchorChanged: (Boolean) -> Unit,
     onSubmit: (String) -> Unit,
@@ -361,7 +358,6 @@ private fun AgentChatScaffold(
         if (!hasMessages) {
             EmptyChatState(
                 showSuggestions = showEmptySuggestions,
-                characterName = characterName,
                 onSuggestionClick = onSuggestionClick,
                 modifier = Modifier
                     .fillMaxSize()
@@ -1033,11 +1029,11 @@ internal fun shouldRequestInitialBottom(
 @Composable
 private fun EmptyChatState(
     showSuggestions: Boolean,
-    characterName: String?,
     onSuggestionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isCharacterConversation = characterName != null
+    val character = LocalRoleplayChat.current
+    val isCharacterConversation = character != null
     val suggestions = listOf(
         SuggestionItem(
             title = stringResource(R.string.ui_analyze_current_screen_ebf08f),
@@ -1068,9 +1064,16 @@ private fun EmptyChatState(
                 .padding(bottom = 56.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (isCharacterConversation) {
+            if (character != null) {
+                CharacterAvatar(
+                    name = character.characterName,
+                    avatarPath = character.avatarPath,
+                    size = 88.dp,
+                    shape = CircleShape,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = characterName.orEmpty(),
+                    text = character.characterName,
                     style = MiuixTheme.textStyles.title2,
                     color = MiuixTheme.colorScheme.onSurface,
                 )

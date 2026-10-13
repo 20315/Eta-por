@@ -1315,4 +1315,6 @@
   <string name="memory_mode_preview">預覽</string>
   <string name="memory_mode_edit">編輯</string>
   <string name="memory_discard">放棄</string>
+  <string name="chat_character_input_hint">對%1$s說點什麼…</string>
+  <string name="chat_character_typing">%1$s 正在回覆…</string>
 </resources>
