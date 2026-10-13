@@ -4,6 +4,10 @@ import io.github.mangi.eta.ui.voice.SpeechReadAloudButton
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -57,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +71,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -290,8 +297,14 @@ private fun UserMessageBubble(
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     val tooltipState = rememberTooltipState(isPersistent = true)
+    val haptic = LocalHapticFeedback.current
     LaunchedEffect(actionsEnabled) {
         if (!actionsEnabled) tooltipState.dismiss()
+    }
+    LaunchedEffect(tooltipState) {
+        snapshotFlow { tooltipState.isVisible }.collect { visible ->
+            if (visible) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
     }
     val visiblePrompt = remember(message.content) {
         AgentFileReferencePromptCodec.parse(message.content)
@@ -307,7 +320,7 @@ private fun UserMessageBubble(
             .fillMaxWidth()
             .padding(
                 horizontal = if (assistantOverlay) 16.dp else 20.dp,
-                vertical = if (assistantOverlay) 4.dp else 7.dp,
+                vertical = if (assistantOverlay) 4.dp else 8.dp,
             ),
         horizontalArrangement = Arrangement.End,
     ) {
@@ -324,6 +337,7 @@ private fun UserMessageBubble(
                             onClick = {
                                 @Suppress("DEPRECATION")
                                 clipboardManager.setText(AnnotatedString(message.content))
+                                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                                 tooltipState.dismiss()
                             },
                         )
@@ -361,7 +375,8 @@ private fun UserMessageBubble(
                                 color = MiuixTheme.colorScheme.surfaceContainerHigh,
                                 topStart = 20.dp,
                                 topEnd = 20.dp,
-                                bottomEnd = 6.dp,
+                                // 描边只支持统一圆角，编辑态收起气泡尾角，让描边与填充贴合。
+                                bottomEnd = if (isEditing) 20.dp else 6.dp,
                                 bottomStart = 20.dp,
                             )
                         }
@@ -379,7 +394,7 @@ private fun UserMessageBubble(
                     )
                     .padding(
                         horizontal = if (assistantOverlay) 12.dp else 16.dp,
-                        vertical = if (assistantOverlay) 8.dp else 11.dp,
+                        vertical = if (assistantOverlay) 8.dp else 12.dp,
                     ),
             ) {
                 if (message.images.isNotEmpty()) {
@@ -392,7 +407,7 @@ private fun UserMessageBubble(
                             if (bitmap != null) {
                                 Image(
                                     bitmap = bitmap,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(R.string.chat_image_attachment),
                                     modifier = Modifier
                                         .size(100.dp)
                                         .clip(RoundedCornerShape(12.dp)),
@@ -443,11 +458,12 @@ private fun MessageTooltipAction(
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = label,
+            // 下方文字已经命名该操作，图标不再重复朗读。
+            contentDescription = null,
             modifier = Modifier.size(16.dp),
             tint = MiuixTheme.colorScheme.onSurface,
         )
@@ -533,6 +549,7 @@ private fun AgentMessageBlock(
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
     var copied by remember(message.id) { mutableStateOf(false) }
     val keepStreamingMarkdown = remember(message.id) { message.isStreaming }
     var streamingRevealComplete by remember(message.id) {
@@ -564,7 +581,7 @@ private fun AgentMessageBlock(
             .fillMaxWidth()
             .padding(
                 horizontal = if (assistantOverlay) 16.dp else 20.dp,
-                vertical = if (assistantOverlay) 8.dp else 7.dp,
+                vertical = 8.dp,
             ),
     ) {
         when {
@@ -604,130 +621,148 @@ private fun AgentMessageBlock(
             }
         }
 
-        if (
-            showCopyAction &&
-            !message.isStreaming &&
-            message.content.isNotBlank() &&
-            revealComplete
+        // 回答显现完成后才出现操作行；淡入展开避免贴底滚动时整页突然跳动一行高度。
+        AnimatedVisibility(
+            visible = showCopyAction &&
+                !message.isStreaming &&
+                message.content.isNotBlank() &&
+                revealComplete,
+            enter = fadeIn(tween(160)) + expandVertically(tween(160)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(120)),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     // 抵消按钮的居中留白，与工作过程标题图标共用左侧中心线。
-                    .offset(x = -8.dp)
+                    .offset(x = -AnswerActionCenterOffset)
                     .padding(top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
+                AnswerActionButton(
+                    icon = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                    contentDescription = stringResource(
+                        if (copied) R.string.copy_copied else R.string.copy_answer,
+                    ),
                     onClick = {
                         @Suppress("DEPRECATION")
                         clipboardManager.setText(AnnotatedString(message.content))
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                         copied = true
                     },
-                    minWidth = 30.dp,
-                    minHeight = 30.dp,
-                ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Rounded.Check
-                            else Icons.Rounded.ContentCopy,
-                        contentDescription = stringResource(
-                            if (copied) R.string.copy_copied else R.string.copy_answer,
-                        ),
-                        modifier = Modifier.size(15.dp),
-                        tint = if (copied) {
-                            MiuixTheme.colorScheme.primary
-                        } else {
-                            MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f)
-                        },
-                    )
-                }
+                    tint = if (copied) MiuixTheme.colorScheme.primary else null,
+                )
                 if (allowSpeech) SpeechReadAloudButton(message.id, message.content)
                 if (showMessageActions) {
                     if (message.characterEditable) {
-                        IconButton(onClick = onEdit, enabled = messageActionsEnabled, minWidth = 30.dp, minHeight = 30.dp) {
-                            Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = "编辑角色回复",
-                                modifier = Modifier.size(15.dp),
-                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
-                            )
-                        }
+                        AnswerActionButton(
+                            icon = Icons.Rounded.Edit,
+                            contentDescription = stringResource(R.string.chat_edit_character_reply),
+                            onClick = onEdit,
+                            enabled = messageActionsEnabled,
+                        )
                     }
                     TooltipBox(text = stringResource(R.string.ui_regenerate_2e1905), enabled = messageActionsEnabled) {
-                        IconButton(
+                        AnswerActionButton(
+                            icon = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(R.string.ui_regenerate_reply_84a7d9),
                             onClick = onRegenerate,
                             enabled = messageActionsEnabled,
-                            minWidth = 30.dp,
-                            minHeight = 30.dp,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = stringResource(R.string.ui_regenerate_reply_84a7d9),
-                                modifier = Modifier.size(15.dp),
-                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
-                            )
-                        }
+                        )
                     }
                     TooltipBox(text = stringResource(R.string.ui_delete_3755f5), enabled = messageActionsEnabled) {
-                        IconButton(
+                        AnswerActionButton(
+                            icon = Icons.Rounded.Delete,
+                            contentDescription = stringResource(R.string.ui_delete_this_conversation_3f351b),
                             onClick = onDelete,
                             enabled = messageActionsEnabled,
-                            minWidth = 30.dp,
-                            minHeight = 30.dp,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Delete,
-                                contentDescription = stringResource(R.string.ui_delete_this_conversation_3f351b),
-                                modifier = Modifier.size(15.dp),
-                                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
-                            )
-                        }
+                        )
                     }
                     if (message.characterEditable && message.candidateCount > 1) {
                         Spacer(Modifier.weight(1f))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(percent = 50))
-                                .background(MiuixTheme.colorScheme.surfaceContainerHigh)
-                                .padding(horizontal = 3.dp, vertical = 2.dp),
-                        ) {
-                            IconButton(
-                                onClick = { onSelectCandidate(message.selectedCandidate - 1) },
-                                enabled = messageActionsEnabled && message.selectedCandidate > 0,
-                                minWidth = 28.dp, minHeight = 28.dp,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ChevronLeft,
-                                    contentDescription = "上一条候选回复",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
-                            Text(
-                                text = "${message.selectedCandidate + 1}/${message.candidateCount}",
-                                style = MiuixTheme.textStyles.footnote1,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.widthIn(min = 30.dp),
-                            )
-                            IconButton(
-                                onClick = { onSelectCandidate(message.selectedCandidate + 1) },
-                                enabled = messageActionsEnabled && message.selectedCandidate < message.candidateCount - 1,
-                                minWidth = 28.dp, minHeight = 28.dp,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ChevronRight,
-                                    contentDescription = "下一条候选回复",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
-                        }
+                        CandidateSwitcher(
+                            selected = message.selectedCandidate,
+                            count = message.candidateCount,
+                            enabled = messageActionsEnabled,
+                            onSelect = onSelectCandidate,
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+/** 思考卡片与运行记录等全宽描边卡片共用的圆角与描边强度，相邻时轮廓一致。 */
+private val ChatCardCorner = 12.dp
+private const val ChatCardOutlineAlpha = 0.5f
+
+/** 回答操作按钮的触控尺寸；行整体左移半个尺寸减去图标半宽，使图标落在工作过程图标的中心线上。 */
+internal val AnswerActionSize = 36.dp
+private val AnswerActionCenterOffset = 11.dp
+
+/** 回答下方的轻量操作：图标显式着色，因此禁用态需要自己换成禁用色，否则看起来仍可点。 */
+@Composable
+internal fun AnswerActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: Color? = null,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        minWidth = AnswerActionSize,
+        minHeight = AnswerActionSize,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(16.dp),
+            tint = when {
+                !enabled -> MiuixTheme.colorScheme.disabledOnSurface
+                tint != null -> tint
+                else -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f)
+            },
+        )
+    }
+}
+
+@Composable
+private fun CandidateSwitcher(
+    selected: Int,
+    count: Int,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 2.dp),
+    ) {
+        AnswerActionButton(
+            icon = Icons.Rounded.ChevronLeft,
+            contentDescription = stringResource(R.string.chat_previous_candidate),
+            onClick = { onSelect(selected - 1) },
+            enabled = enabled && selected > 0,
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Text(
+            text = "${selected + 1}/$count",
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(min = 28.dp),
+        )
+        AnswerActionButton(
+            icon = Icons.Rounded.ChevronRight,
+            contentDescription = stringResource(R.string.chat_next_candidate),
+            onClick = { onSelect(selected + 1) },
+            enabled = enabled && selected < count - 1,
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
     }
 }
 
@@ -770,12 +805,12 @@ internal fun ThinkingRow(
             .padding(horizontal = 20.dp, vertical = 4.dp)
             .squircleSurface(
                 color = MiuixTheme.colorScheme.surface,
-                cornerRadius = 14.dp,
+                cornerRadius = ChatCardCorner,
             )
             .squircleBorder(
                 width = 0.5.dp,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = 0.50f),
-                cornerRadius = 14.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = ChatCardOutlineAlpha),
+                cornerRadius = ChatCardCorner,
             )
     }
 
@@ -792,7 +827,7 @@ internal fun ThinkingRow(
                     if (compact) {
                         Modifier.heightIn(min = WorkRowHeight)
                     } else {
-                        Modifier.padding(horizontal = 13.dp, vertical = 10.dp)
+                        Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
                     },
                 ),
             verticalAlignment = Alignment.CenterVertically,
@@ -848,7 +883,7 @@ internal fun ThinkingRow(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 13.dp)
+                            .padding(horizontal = 12.dp)
                             .height(0.5.dp)
                             .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.45f)),
                     )
@@ -856,8 +891,8 @@ internal fun ThinkingRow(
                 val contentModifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        start = if (compact) 0.dp else 13.dp,
-                        end = if (compact) 8.dp else 13.dp,
+                        start = if (compact) 0.dp else 12.dp,
+                        end = if (compact) 8.dp else 12.dp,
                         top = if (compact) 0.dp else 8.dp,
                         bottom = if (compact) 8.dp else 12.dp,
                     )
@@ -948,15 +983,14 @@ private fun RunTraceRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MiuixTheme.colorScheme.surface)
-            .border(
-                0.5.dp,
-                MiuixTheme.colorScheme.outline.copy(alpha = 0.55f),
-                RoundedCornerShape(12.dp),
+            .squircleSurface(color = MiuixTheme.colorScheme.surface, cornerRadius = ChatCardCorner)
+            .squircleBorder(
+                width = 0.5.dp,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = ChatCardOutlineAlpha),
+                cornerRadius = ChatCardCorner,
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -993,7 +1027,7 @@ private fun ToolSummaryInline(
     FlowRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = if (compact) 10.dp else 20.dp, vertical = 3.dp),
+            .padding(horizontal = if (compact) 10.dp else 20.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -1007,7 +1041,7 @@ private fun ToolSummaryInline(
                         MiuixTheme.colorScheme.outline.copy(alpha = 0.5f),
                         RoundedCornerShape(10.dp),
                     )
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -1016,7 +1050,7 @@ private fun ToolSummaryInline(
                     modifier = Modifier.size(12.dp),
                     tint = MiuixTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = toolDisplayName(tool),
                     style = MiuixTheme.textStyles.footnote2,
@@ -1054,7 +1088,7 @@ private fun SuggestionChipsRow(
                         RoundedCornerShape(10.dp),
                     )
                     .clickable { onSuggestionClick(prompt) }
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(

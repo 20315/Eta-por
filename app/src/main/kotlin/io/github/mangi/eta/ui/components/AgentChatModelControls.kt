@@ -187,7 +187,7 @@ private fun ModelProviderGroupHeader(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(start = 16.dp, end = 14.dp, top = 11.dp, bottom = 9.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -233,7 +233,7 @@ private fun ModelPickerRow(
                 cornerRadius = 12.dp,
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

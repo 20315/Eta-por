@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -42,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
@@ -343,7 +346,8 @@ internal fun ProviderModelsTab(
                 item(key = "models_empty", contentType = "empty") {
                     ProviderSection(
                         title = modelListTitle,
-                        modifier = Modifier.padding(bottom = 24.dp),
+                        // 与非空列表末尾的 24dp 间隔一致：分组自带 16dp，再补 8dp。
+                        modifier = Modifier.padding(bottom = 8.dp),
                     ) {
                         Box(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
@@ -901,9 +905,10 @@ private fun ModelEditDialog(
                     )
                 }
                 if (reasoningOverrideActive || onDelete != null) {
+                    // 文字链接保持轻量外观，但点击区扩展到 40dp 高，避免在弹窗底部误触。
                     Row(
-                        modifier = Modifier.padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        modifier = Modifier.padding(top = 4.dp).offset(x = (-8).dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (reasoningOverrideActive) {
@@ -912,11 +917,12 @@ private fun ModelEditDialog(
                                 style = MiuixTheme.textStyles.body2,
                                 color = MiuixTheme.colorScheme.primary,
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable(
                                         enabled = !isSaving,
                                         onClick = ::resetAutomaticReasoning,
                                     )
-                                    .padding(vertical = 4.dp),
+                                    .padding(horizontal = 8.dp, vertical = 10.dp),
                             )
                         }
                         onDelete?.let { delete ->
@@ -925,8 +931,9 @@ private fun ModelEditDialog(
                                 style = MiuixTheme.textStyles.body2,
                                 color = MiuixTheme.colorScheme.error,
                                 modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable(enabled = !isSaving, onClick = delete)
-                                    .padding(vertical = 4.dp),
+                                    .padding(horizontal = 8.dp, vertical = 10.dp),
                             )
                         }
                     }

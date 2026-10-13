@@ -6,12 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +22,7 @@ import io.github.mangi.eta.agent.roleplay.RoleplayBinding
 import io.github.mangi.eta.ui.app.CharacterLibraryStore
 import io.github.mangi.eta.ui.components.EtaArrowPreference
 import io.github.mangi.eta.ui.components.EtaCard
+import io.github.mangi.eta.ui.components.EtaPreferenceDefaults
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
@@ -33,6 +30,7 @@ import io.github.mangi.eta.ui.components.EtaRadioButtonPreference
 import io.github.mangi.eta.ui.components.EtaSwitchPreference
 import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.EtaWindowDialog
+import io.github.mangi.eta.ui.components.ItemDescriptionDialog
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.navigation.AppRoute
@@ -71,7 +69,7 @@ internal fun CharacterDetailScreen(
         }
         item(key = "profile") {
             EtaCard(
-                modifier = Modifier.padding(horizontal = CharacterCardPadding, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = CharacterCardPadding).padding(top = 8.dp, bottom = 12.dp),
                 insideMargin = PaddingValues(16.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -90,7 +88,7 @@ internal fun CharacterDetailScreen(
                     Text(
                         text = profile.card.description,
                         style = MiuixTheme.textStyles.body2,
-                        modifier = Modifier.padding(top = 14.dp),
+                        modifier = Modifier.padding(top = 12.dp),
                         maxLines = 6,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -100,10 +98,11 @@ internal fun CharacterDetailScreen(
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.primary,
                             modifier = Modifier
-                                .padding(top = 6.dp)
+                                .padding(top = 4.dp)
                                 .clickable {
                                     preview = CharacterTextPreview("角色设定", profile.card.description)
-                                },
+                                }
+                                .padding(vertical = 4.dp),
                         )
                     }
                 }
@@ -116,14 +115,13 @@ internal fun CharacterDetailScreen(
                 onClick = { store.startConversation(id, onStart) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = CharacterCardPadding, vertical = 6.dp),
+                    .padding(horizontal = CharacterCardPadding)
+                    .padding(bottom = EtaPreferenceDefaults.GroupSpacing),
                 colors = ButtonDefaults.textButtonColorsPrimary(),
             )
         }
         item(key = "persona") {
-            EtaPreferenceGroup(
-                modifier = Modifier.padding(horizontal = CharacterCardPadding, vertical = 8.dp),
-            ) {
+            EtaPreferenceGroup {
                 EtaSwitchPreference(
                     title = "使用我的人设",
                     summary = store.persona.name.ifBlank { "未设置称呼" },
@@ -136,7 +134,7 @@ internal fun CharacterDetailScreen(
         }
         item(key = "greetings-title") { EtaPreferenceGroupTitle("开场白") }
         item(key = "greetings") {
-            EtaPreferenceGroup(modifier = Modifier.padding(horizontal = CharacterCardPadding)) {
+            EtaPreferenceGroup {
                 val greetings = listOf(profile.card.firstMessage) + profile.card.alternateGreetings
                 greetings.forEachIndexed { index, greeting ->
                     if (index > 0) EtaPreferenceDivider(hasLeading = false)
@@ -153,14 +151,15 @@ internal fun CharacterDetailScreen(
                                     text = "阅读全文",
                                     style = MiuixTheme.textStyles.footnote1,
                                     color = MiuixTheme.colorScheme.primary,
+                                    // bottomAction 已经提供行内边距，这里只扩大可点区域。
                                     modifier = Modifier
-                                        .padding(start = 16.dp, bottom = 10.dp)
                                         .clickable {
                                             preview = CharacterTextPreview(
                                                 if (index == 0) "默认开场白" else "开场白 ${index + 1}",
                                                 greeting,
                                             )
-                                        },
+                                        }
+                                        .padding(vertical = 4.dp),
                                 )
                             }
                         } else {
@@ -172,7 +171,7 @@ internal fun CharacterDetailScreen(
         }
         item(key = "management-title") { EtaPreferenceGroupTitle("管理") }
         item(key = "management") {
-            EtaPreferenceGroup(modifier = Modifier.padding(horizontal = CharacterCardPadding)) {
+            EtaPreferenceGroup {
                 EtaArrowPreference(title = "编辑角色", enabled = !store.busy, onClick = {
                     store.discardEditor()
                     onNavigate(AppRoute.CharacterEditor(id))
@@ -187,42 +186,21 @@ internal fun CharacterDetailScreen(
                 })
                 EtaPreferenceDivider(hasLeading = false)
                 EtaArrowPreference(
-                    title = "删除角色",
-                    titleColor = BasicComponentColors(
-                        color = MiuixTheme.colorScheme.error,
-                        disabledColor = MiuixTheme.colorScheme.disabledOnSurface,
-                    ),
+                    title = "导出 PNG 角色卡",
                     enabled = !store.busy,
-                    onClick = { showDeleteConfirm = true },
+                    onClick = { pngExporter.launch(characterExportName(profile.card.name, "png")) },
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    EtaTextButton(
-                        text = "导出 PNG",
-                        onClick = { pngExporter.launch(characterExportName(profile.card.name, "png")) },
-                        enabled = !store.busy,
-                        modifier = Modifier.weight(1f),
-                    )
-                    EtaTextButton(
-                        text = "导出 JSON",
-                        onClick = { jsonExporter.launch(characterExportName(profile.card.name, "json")) },
-                        enabled = !store.busy,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                EtaPreferenceDivider(hasLeading = false)
+                EtaArrowPreference(
+                    title = "导出 JSON 角色卡",
+                    enabled = !store.busy,
+                    onClick = { jsonExporter.launch(characterExportName(profile.card.name, "json")) },
+                )
             }
         }
         if (store.compatibilityWarnings.isNotEmpty()) {
             item(key = "compatibility") {
-                EtaPreferenceGroup(
-                    modifier = Modifier
-                        .padding(horizontal = CharacterCardPadding)
-                        .padding(top = 12.dp),
-                ) {
+                EtaPreferenceGroup {
                     EtaArrowPreference(
                         title = "兼容说明",
                         summary = "${store.compatibilityWarnings.size} 项内容按兼容范围处理",
@@ -239,6 +217,20 @@ internal fun CharacterDetailScreen(
                         }
                     }
                 }
+            }
+        }
+        // 破坏性操作单独成组并放在页面末尾，与日常管理操作拉开距离。
+        item(key = "danger") {
+            EtaPreferenceGroup {
+                EtaArrowPreference(
+                    title = "删除角色",
+                    titleColor = BasicComponentColors(
+                        color = MiuixTheme.colorScheme.error,
+                        disabledColor = MiuixTheme.colorScheme.disabledOnSurface,
+                    ),
+                    enabled = !store.busy,
+                    onClick = { showDeleteConfirm = true },
+                )
             }
         }
     }
@@ -264,27 +256,11 @@ internal fun CharacterDetailScreen(
     }
 
     preview?.let { current ->
-        EtaWindowDialog(
-            show = true,
+        ItemDescriptionDialog(
             title = current.title,
-            onDismissRequest = { preview = null },
-        ) {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                Text(current.text, style = MiuixTheme.textStyles.body2)
-            }
-            EtaTextButton(
-                text = "关闭",
-                onClick = { preview = null },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-            )
-        }
+            description = current.text,
+            onDismiss = { preview = null },
+        )
     }
 }
 

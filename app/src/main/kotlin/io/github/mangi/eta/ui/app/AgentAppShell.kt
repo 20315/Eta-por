@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.ShortText
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -203,8 +204,10 @@ private fun AgentTopBar(
         }
     }
 
-    if (isHome) {
-        // 首页聊天舞台保持紧凑；二级内容页统一使用可折叠大标题。
+    // 首页聊天舞台与浏览器、终端这类整屏工具页没有可驱动折叠的滚动列表，大标题会一直展开、
+    // 白占一屏顶部；它们使用紧凑标题，其余二级内容页统一使用可折叠大标题。
+    val compactTitle = isHome || route is AppRoute.Browser || route is AppRoute.Terminal
+    if (compactTitle) {
         SmallTopAppBar(
             title = titleForRoute(route),
             color = color,
@@ -308,7 +311,22 @@ private fun TopBarOverflowMenu(
                             )
                         },
                     ),
-                ) + if (canStopKimiWeb) listOf(DropdownItem(text = stopKimiWebText)) else emptyList()
+                ) + if (canStopKimiWeb) {
+                    listOf(
+                        DropdownItem(
+                            text = stopKimiWebText,
+                            icon = { modifier ->
+                                Icon(
+                                    imageVector = Icons.Rounded.Stop,
+                                    contentDescription = null,
+                                    modifier = modifier.size(TopBarMenuIconSize),
+                                )
+                            },
+                        ),
+                    )
+                } else {
+                    emptyList()
+                }
             }
             ListPopupColumn {
                 menuItems.forEachIndexed { index, item ->

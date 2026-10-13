@@ -54,18 +54,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.R
-import kotlin.math.sqrt
-import kotlin.random.Random
 import io.github.mangi.eta.agent.voice.EtaSpeechPhase
 import io.github.mangi.eta.agent.voice.SpeechInputController
 import io.github.mangi.eta.agent.voice.SpeechPlaybackController
 import io.github.mangi.eta.data.model.TtsProvider
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.MainActivity
+import io.github.mangi.eta.ui.components.AnswerActionSize
 import io.github.mangi.eta.ui.components.ChatInputActionIconSize
 import io.github.mangi.eta.ui.components.ChatInputActionSize
 import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.StatusError
+import kotlin.math.sqrt
+import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -205,11 +206,11 @@ internal fun SpeechInputFeedback(controller: SpeechInputController) {
                         onClick = { openSpeechSettings(context) },
                     )
                 }
-                IconButton(onClick = controller::cancel, minWidth = 28.dp, minHeight = 28.dp) {
+                IconButton(onClick = controller::cancel, minWidth = 36.dp, minHeight = 36.dp) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.action_cancel),
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
@@ -308,15 +309,15 @@ internal fun SpeechReadAloudButton(messageId: String, text: String) {
     val active = state.messageId == messageId
     IconButton(
         onClick = { if (active) controller.stop() else controller.speak(messageId, text) },
-        minWidth = 30.dp,
-        minHeight = 30.dp,
+        minWidth = AnswerActionSize,
+        minHeight = AnswerActionSize,
     ) {
         Icon(
             imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
             contentDescription = stringResource(
                 if (active) R.string.speech_read_stop else R.string.speech_read_aloud,
             ),
-            modifier = Modifier.size(if (active) 13.dp else 15.dp),
+            modifier = Modifier.size(if (active) 14.dp else 16.dp),
             tint = if (active) {
                 MiuixTheme.colorScheme.primary
             } else {

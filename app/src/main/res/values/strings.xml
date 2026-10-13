@@ -398,7 +398,6 @@
   <string name="ui_browse_the_web_da7afb">Browse the web</string>
   <string name="ui_add_custom_model_a5ddc0">Add custom model</string>
   <string name="ui_add_attachment_dba9e8">Add attachment</string>
-  <string name="ui_clear_84fcd7">Clear</string>
   <string name="ui_clear_all_memory_a43bd3">Clear all memory?</string>
   <string name="ui_about_github_star_title">Source Code</string>
   <string name="ui_about_github_star_hint">If Eta helps you, please star it on GitHub — it means a lot to us</string>
@@ -1107,7 +1106,7 @@
   <string name="browser_title">Agent Browser</string>
   <string name="browser_open_external">Open in another app</string>
   <string name="browser_reset_session">Reset session</string>
-  <string name="browser_user_controlling">You are controlling this session. Agent web actions are paused; return to let the Agent continue.</string>
+  <string name="browser_user_controlling">You\'re controlling the page. The Agent is paused until you go back.</string>
   <string name="browser_opening">Opening webpage</string>
   <string name="browser_opening_host">Opening %1$s</string>
   <string name="model_not_selected">Not selected</string>
@@ -1320,7 +1319,6 @@
   <string name="speech_saved">Saved</string>
   <string name="speech_saved_with_pending">Saved; some changes are still unsaved</string>
   <string name="speech_save_failed">Save failed: %1$s</string>
-  <string name="speech_loading">Loading settings…</string>
   <string name="speech_load_failed">Could not read speech settings; go back and try again</string>
   <string name="speech_oss_note">Recordings are uploaded as private objects and deleted after transcription. Grant put, read and delete permission for this prefix, and add a one-day expiration lifecycle rule as a cleanup fallback.</string>
   <string name="speech_oss_region">Region</string>
@@ -1349,4 +1347,18 @@
   <string name="tool_web_search_description">未使用 Provider 托管搜索时检索公开网页，返回标题、链接与摘要，无需额外 API Key。</string>
   <string name="tool_fetch_url">读取网页正文</string>
   <string name="tool_fetch_url_description">读取静态网页正文并分页续读；不执行网页脚本或共享浏览器登录状态。</string>
+  <string name="chat_edit_character_reply">Edit character reply</string>
+  <string name="chat_previous_candidate">Previous candidate reply</string>
+  <string name="chat_next_candidate">Next candidate reply</string>
+  <string name="chat_image_attachment">Image attachment</string>
+  <string name="chat_edit_preserve_following">Saving updates this message in place and keeps the rest of the conversation</string>
+  <string name="chat_save_message">Save message</string>
+  <string name="chat_character_story_start">The story begins here</string>
+  <string name="tool_details_expand">Expand tool details</string>
+  <string name="tool_details_collapse">Collapse tool details</string>
+  <string name="shared_folders_picker_no_subfolders">No subfolders here</string>
+  <string name="memory_empty_title">No memories yet</string>
+  <string name="memory_mode_preview">Preview</string>
+  <string name="memory_mode_edit">Edit</string>
+  <string name="memory_discard">Discard</string>
 </resources>

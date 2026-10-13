@@ -376,7 +376,6 @@
   <string name="ui_browse_the_web_da7afb">瀏覽網頁</string>
   <string name="ui_add_custom_model_a5ddc0">新增自訂模型</string>
   <string name="ui_add_attachment_dba9e8">新增附件</string>
-  <string name="ui_clear_84fcd7">清空</string>
   <string name="ui_clear_all_memory_a43bd3">清空全部記憶？</string>
   <string name="ui_about_github_star_title">原始碼</string>
   <string name="ui_about_github_star_hint">如果 Eta 幫到了你，請在 GitHub 點個 Star，這對我們意義重大</string>
@@ -1076,7 +1075,7 @@
   <string name="browser_title">Agent 瀏覽器</string>
   <string name="browser_open_external">使用其他應用程式開啟</string>
   <string name="browser_reset_session">重設工作階段</string>
-  <string name="browser_user_controlling">你正在接管目前的工作階段，Agent 的網頁操作已暫停；返回後可讓 Agent 繼續。</string>
+  <string name="browser_user_controlling">你正在操作網頁，Agent 已暫停，返回後繼續</string>
   <string name="browser_opening">正在開啟網頁</string>
   <string name="browser_opening_host">正在開啟 %1$s</string>
   <string name="model_not_selected">未選擇</string>
@@ -1287,7 +1286,6 @@
   <string name="speech_saved">已儲存</string>
   <string name="speech_saved_with_pending">已儲存，仍有未儲存的修改</string>
   <string name="speech_save_failed">儲存失敗：%1$s</string>
-  <string name="speech_loading">正在讀取設定</string>
   <string name="speech_load_failed">無法讀取語音設定，請返回後重試</string>
   <string name="speech_oss_note">錄音以私有物件上傳，轉寫結束後刪除。請為此目錄授予上傳、讀取和刪除權限，並配置一天過期的生命週期規則作為異常清理保障。</string>
   <string name="speech_oss_region">地域</string>
@@ -1303,4 +1301,18 @@
   <string name="speech_credentials_lost">語音憑據無法解密，請重新填寫並儲存</string>
   <string name="speech_save_retry">請重試</string>
   <string name="system_notice_model_retry">模型請求重試</string>
+  <string name="chat_edit_character_reply">編輯角色回覆</string>
+  <string name="chat_previous_candidate">上一則候選回覆</string>
+  <string name="chat_next_candidate">下一則候選回覆</string>
+  <string name="chat_image_attachment">圖片附件</string>
+  <string name="chat_edit_preserve_following">儲存後原位更新這則訊息，並保留後續對話</string>
+  <string name="chat_save_message">儲存訊息</string>
+  <string name="chat_character_story_start">故事從這裡開始</string>
+  <string name="tool_details_expand">展開工具詳情</string>
+  <string name="tool_details_collapse">收合工具詳情</string>
+  <string name="shared_folders_picker_no_subfolders">此處沒有子資料夾</string>
+  <string name="memory_empty_title">還沒有記憶</string>
+  <string name="memory_mode_preview">預覽</string>
+  <string name="memory_mode_edit">編輯</string>
+  <string name="memory_discard">放棄</string>
 </resources>
