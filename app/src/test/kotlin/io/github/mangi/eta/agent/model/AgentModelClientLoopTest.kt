@@ -6,6 +6,8 @@ import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.data.model.OpenAiEndpointMode
 import io.github.mangi.eta.data.model.ProviderTypes
 import java.util.concurrent.atomic.AtomicInteger
+import io.github.mangi.eta.agent.device.RootAccessState
+import io.github.mangi.eta.agent.device.RootAccessStatus
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -15,6 +17,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentModelClientLoopTest {
+    @Test
+    fun rootProbeUpdatesEvidenceEvenBeforeAvailabilityChangesThenExposesRoot() {
+        var root = RootAccessState(isChecking = true)
+        val calls = mutableListOf<String>()
+        val provider = ScriptedProvider(listOf(
+            { request, _ ->
+                assertTrue(request.messages.toString().contains("Root 授权正在检测"))
+                assistant(finishReason = "tool_calls", toolCalls = listOf(toolCall("context", "get_current_context", "{}")))
+            },
+            { request, _ ->
+                assertTrue(request.messages.toString().contains("Root 检测超时"))
+                assertFalse(request.tools.toString().contains("set_setting"))
+                assistant(finishReason = "tool_calls", toolCalls = listOf(toolCall("probe", "terminal", """{"action":"check_root"}""")))
+            },
+            { request, _ ->
+                assertTrue(request.messages.toString().contains("已确认 UID=0"))
+                assertTrue(request.tools.toString().contains("set_setting"))
+                assistant(finishReason = "tool_calls", toolCalls = listOf(toolCall("root-command", "terminal", """{"command":"id -u","identity":"root"}""")))
+            },
+            { _, _ -> assistant(content = "已验证 Root", finishReason = "stop") },
+        ))
+        AgentModelClient.complete(
+            modelConfig().copy(terminalTools = true, deviceSensitiveActionTools = true), "检查 Root",
+            AgentModelClient.ToolExecutor { call ->
+                calls += call.id
+                root = if (call.id == "context") RootAccessState(RootAccessStatus.TIMED_OUT, suPresent = true)
+                    else RootAccessState(RootAccessStatus.GRANTED, suPresent = true)
+                AgentModelClient.ToolResult("""{"ok":true}""")
+            },
+            provider = provider,
+            capabilitiesProvider = { AgentToolCapabilities(rootAvailable = root.isGranted, rootState = root) },
+        )
+        assertEquals(listOf("context", "probe", "root-command"), calls)
+    }
+
     @Test
     fun hostedSearchReplacesOnlyTheLocalSearchInSupportedConfigurations() {
         for (providerType in listOf(ProviderTypes.OPENAI_COMPATIBLE, ProviderTypes.ANTHROPIC)) {
@@ -53,7 +90,7 @@ class AgentModelClientLoopTest {
         val provider = ScriptedProvider(listOf(
             { _, _ -> assistant(finishReason = "tool_calls", toolCalls = listOf(toolCall("local-search", "web_search", """{"query":"example"}"""))) },
             { request, _ ->
-                assertTrue(request.messages.toString().contains("INVALID_TOOL_ARGUMENTS"))
+                assertTrue(request.messages.toString().contains("TOOL_NOT_AVAILABLE"))
                 assistant(content = "已使用可用能力", finishReason = "stop")
             },
         ))
@@ -65,7 +102,7 @@ class AgentModelClientLoopTest {
     }
 
     @Test
-    fun eachRoundUsesOneCapabilitySnapshotForDeclarationValidationAndPrompt() {
+    fun eachRoundUsesOneCapabilitySnapshotForToolAvailabilityAndPrompt() {
         var root = true
         var captures = 0
         val executed = mutableListOf<String>()
@@ -80,11 +117,11 @@ class AgentModelClientLoopTest {
                 assertFalse(request.messages.toString().contains("相关应用私有文件与数据库"))
                 assertTrue(request.messages.toString().contains("identity=user"))
                 assistant(finishReason = "tool_calls", toolCalls = listOf(
-                    toolCall("stale", "terminal", "{\"action\":\"open\",\"identity\":\"root\"}"),
+                    toolCall("stale", "set_setting", "{}"),
                 ))
             },
             { request, _ ->
-                assertTrue(request.messages.toString().contains("INVALID_TOOL_ARGUMENTS"))
+                assertTrue(request.messages.toString().contains("TOOL_NOT_AVAILABLE"))
                 assistant(content = "完成", finishReason = "stop")
             },
         ))
@@ -503,33 +540,56 @@ class AgentModelClientLoopTest {
     }
 
     @Test
-    fun missingRequiredArgumentsNeverReachDeviceExecutor() {
-        val provider = ScriptedProvider(
-            assistant(
-                finishReason = "tool_calls",
-                toolCalls = listOf(toolCall("call-1", "tap", "{}")),
-            ),
-            assistant(content = "已修正", finishReason = "stop"),
+    fun toolArgumentsReachExecutorWithoutSchemaPreflight() {
+        val calls = listOf(
+            toolCall("write", "write_file", """{"path":"note.md","content":"内容","identity":"USER","extra":true}"""),
+            toolCall("read", "read_file", """{"path":"note.md","start_line":1,"offset_bytes":0,"max_bytes":1000000}"""),
+            toolCall("missing", "tap", "{}"),
         )
-        var executed = false
-
+        val provider = ScriptedProvider(
+            assistant(finishReason = "tool_calls", toolCalls = calls),
+            assistant(content = "完成", finishReason = "stop"),
+        )
+        val executed = mutableListOf<AgentModelClient.ToolCall>()
         AgentModelClient.complete(
-            config = modelConfig(),
-            prompt = "点击",
+            config = modelConfig().copy(terminalTools = true),
+            prompt = "执行工具",
             toolExecutor = AgentModelClient.ToolExecutor {
-                executed = true
-                AgentModelClient.ToolResult("unexpected")
+                executed += it
+                AgentModelClient.ToolResult(
+                    if (it.id == "missing") """{"ok":false,"code":"INVALID_ARGUMENT","message":"缺少坐标"}"""
+                    else """{"ok":true}""",
+                )
             },
             provider = provider,
         )
+        assertEquals(calls.map { call ->
+            val function = call.getJSONObject("function")
+            AgentModelClient.ToolCall(call.getString("id"), function.getString("name"), function.getString("arguments"))
+        }, executed)
+        val messages = provider.requests[1].toString()
+        assertTrue(messages.contains("缺少坐标"))
+        assertFalse(messages.contains("INVALID_TOOL_ARGUMENTS"))
+    }
 
-        assertFalse(executed)
-        assertTrue(
-            provider.requests[1]
-                .getJSONObjectFromEnd(1)
-                .getString("content")
-                .contains("INVALID_TOOL_ARGUMENTS")
+    @Test
+    fun remoteToolSchemasAreNotInterpretedByTheLoop() {
+        val call = toolCall("remote", "mcp_test_write", """{"content":"正文","extra":true}""")
+        val provider = ScriptedProvider(
+            assistant(finishReason = "tool_calls", toolCalls = listOf(call)),
+            assistant(content = "完成", finishReason = "stop"),
         )
+        val executed = mutableListOf<AgentModelClient.ToolCall>()
+        AgentModelClient.complete(
+            config = modelConfig(), prompt = "写文件", provider = provider,
+            additionalTools = JSONArray().put(AgentToolSchema.function("mcp_test_write", "远端文件工具",
+                JSONObject("""{"type":"object","required":["mode"],"additionalProperties":false}"""))),
+            toolExecutor = AgentModelClient.ToolExecutor {
+                executed += it
+                AgentModelClient.ToolResult("""{"ok":true}""")
+            },
+        )
+        assertEquals(listOf(AgentModelClient.ToolCall("remote", "mcp_test_write", """{"content":"正文","extra":true}""")), executed)
     }
 
     @Test

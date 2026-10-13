@@ -119,6 +119,12 @@ internal class ShellProcessSupervisor(
         return process
     }
 
+    internal fun ownershipOf(process: Process): ShellProcessOwnership? {
+        val metadata = synchronized(activeProcesses) { processMetadata[process] } ?: return null
+        val ownership = resolveProcessOwnership(metadata) ?: return null
+        return ShellProcessOwnership(ownership.pid, metadata.ownershipToken, ownership.isolatedGroup)
+    }
+
     fun transferActiveProcess(process: Process, transfer: () -> Unit): Boolean =
         synchronized(activeProcesses) {
             if (isClosing) return false
@@ -506,6 +512,8 @@ internal class ShellProcessSupervisor(
         val isolatedGroup: Boolean,
     )
 }
+
+internal data class ShellProcessOwnership(val pid: Long, val token: String, val isolatedGroup: Boolean)
 
 /** 写入托管进程环境块的归属标记；巡检与停止前用它防止 PID 复用误杀。 */
 internal const val ETA_PROCESS_OWNER_ENV = "ETA_PROCESS_OWNER"

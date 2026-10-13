@@ -222,6 +222,10 @@
   <string name="tool_open_uri">使用應用程式開啟</string>
   <string name="tool_browser_use">瀏覽網頁</string>
   <string name="tool_terminal">終端機</string>
+  <string name="tool_terminal_job">异步命令</string>
+  <string name="tool_terminal_job_description">启动、查看和停止后台命令；回复结束后继续运行，完成时通知</string>
+  <string name="tool_terminal_daemon">后台服务</string>
+  <string name="tool_terminal_daemon_description">启动、查看和停止可跨 Agent 任务运行的后台服务</string>
   <string name="tool_run_command">執行指令</string>
   <string name="tool_read_file">讀取檔案</string>
   <string name="tool_write_file">寫入檔案</string>
@@ -697,7 +701,7 @@
   <string name="tool_ui_coloros_system_memory_eff961">ColorOS 系統記憶</string>
   <string name="tool_ui_qq_chat_pictures_e21bf9">QQ 聊天圖片</string>
   <string name="tool_ui_wi_fi_password_80e9a4">Wi‑Fi 密碼</string>
-  <string name="tool_ui_user_root_shell_conversational_execution_and_asy_13c2ab">user/root shell、互動式執行與非同步讀取</string>
+  <string name="tool_ui_user_root_shell_conversational_execution_and_asy_13c2ab">执行命令或复用持久 Shell 会话</string>
   <string name="tool_ui_download_history_8494d7">下載記錄</string>
   <string name="tool_ui_personal_order_25e4c9">個人訂單</string>
   <string name="tool_ui_retrieve_recording_files_from_system_media_libra_314c4d">從系統媒體庫搜尋錄音檔案</string>

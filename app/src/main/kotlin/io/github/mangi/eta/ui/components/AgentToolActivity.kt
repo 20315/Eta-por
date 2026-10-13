@@ -365,7 +365,7 @@ private fun rememberRunningSeconds(id: String, running: Boolean): Int? {
 }
 
 private fun ToolActivityMessageUi.isTerminalTool(): Boolean =
-    toolName == "terminal" || toolName == "run_command"
+    toolName in setOf("terminal", "terminal_job", "terminal_daemon", "run_command")
 
 @Composable
 private fun ToolActivityStatusUi.dotColor() = when (this) {

@@ -81,7 +81,7 @@ private fun DaemonTaskRow(
             .padding(vertical = 6.dp),
     ) {
         Text(
-            text = task.command,
+            text = task.description.ifBlank { task.command },
             style = MiuixTheme.textStyles.body2.copy(fontFamily = FontFamily.Monospace),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -145,8 +145,13 @@ private fun daemonMeta(task: DaemonTaskUi): String {
         TerminalEnvironment.ALPINE -> "Alpine"
         TerminalEnvironment.DEBIAN -> "Debian"
     }
-    val stateLabel = stringResource(
-        if (task.running) R.string.terminal_daemon_running else R.string.terminal_daemon_exited
-    )
+    val stateLabel = when (task.status) {
+        "completed" -> "已完成"
+        "failed" -> "执行失败"
+        "timed_out" -> "已超时"
+        "stopped" -> "已停止"
+        "interrupted" -> "已中断"
+        else -> stringResource(if (task.running) R.string.terminal_daemon_running else R.string.terminal_daemon_exited)
+    }
     return "$environmentLabel · ${task.identity} · $stateLabel"
 }
