@@ -68,7 +68,7 @@ Runtime 同时管理流式事件、steering、取消和增量 transcript。追�
 
 ## 为移动设备重新设计的终端
 
-Eta 的终端可以由 Agent 调用，也可以由你直接操作。多个会话各自保留工作目录与环境；简洁模式按命令展示输入输出，PTY 控制台支持 TUI、快捷键与 ANSI 渲染。模型通过 `terminal` 执行命令，`terminal_job` 管理回复结束后仍会继续执行的后台命令，完成时发送通知并保留日志，`terminal_daemon` 管理可跨任务运行的后台服务；两种后台任务都可查看输出、主动停止。
+Eta 的终端可以由 Agent 调用，也可以由你直接操作。多个会话各自保留工作目录与环境；PTY 控制台是默认形态，可以直接运行 Claude Code、Codex、Kimi Code 等 TUI：输入直达终端，键条提供 Esc、Ctrl/Alt、方向键、回车与粘贴，网格随软键盘自动调整；简洁模式按命令展示输入输出。模型通过 `terminal` 执行命令，`terminal_job` 管理回复结束后仍会继续执行的后台命令，完成时发送通知并保留日志，`terminal_daemon` 管理可跨任务运行的后台服务；两种后台任务都可查看输出、主动停止。
 
 Agent 的文件与命令共用本次运行的默认身份和工作区：已确认 Root 授权时默认直接使用 Root，否则使用 App 身份；两者使用同一个私有工作区，身份变化不移动文件。工作区页面支持读取、导出 Root 生成的文件；需要普通身份时显式传 identity=user。普通 Shell 身份不等同于 ADB Shell。Linux 文件路径在所选环境内部解析，例如 `/workspace`，不使用 Android 宿主的 rootfs 路径。单次写入及精确编辑限制为 512 KiB；续读、分页、版本检查与不同后端的写入保证见 [文件工具合同](docs/AGENT_RUNTIME.md#结构化文件工具)。
 

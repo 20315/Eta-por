@@ -28,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -43,6 +42,7 @@ import io.github.mangi.eta.agent.terminal.TerminalRuntime
 import io.github.mangi.eta.agent.terminal.runOneShotShell
 import io.github.mangi.eta.agent.terminal.shellQuote
 import io.github.mangi.eta.ui.components.EtaCard
+import io.github.mangi.eta.ui.components.EtaMonospace
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
@@ -367,7 +367,7 @@ private fun SharedFolderPickerDialog(
             }
             Text(
                 text = stringResource(R.string.shared_folders_selected_source, path),
-                style = MiuixTheme.textStyles.footnote1.copy(fontFamily = FontFamily.Monospace),
+                style = MiuixTheme.textStyles.footnote1.copy(fontFamily = EtaMonospace),
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(top = 8.dp),
             )
@@ -441,7 +441,7 @@ private fun PickerRow(label: String, onClick: () -> Unit) {
     ) {
         Text(
             text = label,
-            style = MiuixTheme.textStyles.body2.copy(fontFamily = FontFamily.Monospace),
+            style = MiuixTheme.textStyles.body2.copy(fontFamily = EtaMonospace),
         )
     }
 }

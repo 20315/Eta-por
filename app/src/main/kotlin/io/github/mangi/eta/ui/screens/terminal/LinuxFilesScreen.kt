@@ -18,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -28,6 +27,7 @@ import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import io.github.mangi.eta.agent.terminal.LinuxEnvironmentPaths
 import io.github.mangi.eta.agent.terminal.LinuxFileExplorer
 import io.github.mangi.eta.agent.terminal.ShellProcessSupervisor
+import io.github.mangi.eta.ui.components.EtaMonospace
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import kotlinx.coroutines.Dispatchers
@@ -138,7 +138,7 @@ internal fun LinuxFilesScreen(
                                 Text(
                                     text = result.content,
                                     style = MiuixTheme.textStyles.footnote1
-                                        .copy(fontFamily = FontFamily.Monospace),
+                                        .copy(fontFamily = EtaMonospace),
                                     modifier = Modifier.padding(horizontal = 24.dp),
                                 )
                             }
@@ -225,7 +225,7 @@ internal fun LinuxFilesScreen(
 private fun PathBar(path: String) {
     Text(
         text = path,
-        style = MiuixTheme.textStyles.body2.copy(fontFamily = FontFamily.Monospace),
+        style = MiuixTheme.textStyles.body2.copy(fontFamily = EtaMonospace),
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier
             .padding(horizontal = 24.dp)

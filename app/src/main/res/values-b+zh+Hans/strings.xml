@@ -60,6 +60,14 @@
   <string name="terminal_reconnect">重新连接</string>
   <string name="terminal_console_mode">控制台模式</string>
   <string name="terminal_block_mode">简洁模式</string>
+  <string name="terminal_key_paste">粘贴</string>
+  <string name="terminal_keyboard_show">显示键盘</string>
+  <string name="terminal_keyboard_hide">收起键盘</string>
+  <string name="terminal_key_left">左</string>
+  <string name="terminal_key_up">上</string>
+  <string name="terminal_key_down">下</string>
+  <string name="terminal_key_right">右</string>
+  <string name="terminal_key_enter">回车</string>
   <string name="terminal_interrupted">已停止</string>
   <string name="terminal_env_switched">已切换到 %1$s 环境</string>
   <string name="terminal_exit_code">退出码 %1$d</string>
