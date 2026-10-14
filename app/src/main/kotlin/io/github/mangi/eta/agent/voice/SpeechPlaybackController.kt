@@ -27,6 +27,7 @@ internal class SpeechPlaybackController(
     private val context: Context,
     private val scope: CoroutineScope,
     private val beforePlayback: () -> Unit = {},
+    private val interruptOnScreenOff: Boolean = true,
     private val afterPlayback: () -> Unit = {},
     private val synthesize: suspend (SpeechSettings, SpeechCredentials, String, (ByteArray) -> Unit) -> Unit = ::synthesizeSpeech,
     private val createOutput: () -> SpeechAudioOutput = ::SpeechPcmOutput,
@@ -45,7 +46,7 @@ internal class SpeechPlaybackController(
         mutableState.value = SpeechPlaybackState(messageId, loading = true)
         job = scope.launch(Dispatchers.Main.immediate) {
             try {
-                lease = SpeechAudioLease(context) { stop() }.also { it.acquire(playback = false) }
+                lease = SpeechAudioLease(context, interruptOnScreenOff) { stop() }.also { it.acquire(playback = false) }
                 val config = settings ?: SpeechSettingsRepository.settings()
                 val secrets = credentials ?: SpeechSettingsRepository.credentials(context)
                 validateSpeechSettings(config, secrets, synthesis = true)

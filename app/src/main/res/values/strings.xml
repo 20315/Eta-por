@@ -1343,6 +1343,8 @@
   <string name="speech_dictation_finish">Finish dictation</string>
   <string name="speech_read_aloud">Read aloud</string>
   <string name="speech_read_stop">Stop reading</string>
+  <string name="read_aloud_channel">Read aloud</string>
+  <string name="read_aloud_notification_title">Eta is reading aloud</string>
   <string name="speech_mic_permission">Allow Eta to use the microphone</string>
   <string name="speech_open_settings">Speech settings</string>
   <string name="speech_test_result">Recognition result: %1$s</string>

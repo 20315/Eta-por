@@ -55,6 +55,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.voice.EtaSpeechPhase
+import io.github.mangi.eta.agent.voice.ReadAloudPlaybackService
 import io.github.mangi.eta.agent.voice.SpeechInputController
 import io.github.mangi.eta.agent.voice.SpeechPlaybackController
 import io.github.mangi.eta.data.model.TtsProvider
@@ -275,14 +276,28 @@ private fun SpeechFeedbackAction(text: String, primary: Boolean = false, onClick
 internal val LocalSpeechPlayback = staticCompositionLocalOf<SpeechPlaybackController?> { null }
 internal val LocalSpeechPlaybackEnabled = compositionLocalOf { false }
 
-/** 朗读控制器随聊天页生命周期存在；未配置播报服务时朗读入口整体隐藏。 */
+/**
+ * 朗读控制器随聊天页存在；未配置播报服务时朗读入口整体隐藏。
+ * 退到后台或锁屏时继续朗读（出声期间由前台播放服务保活），离开聊天页才停止。
+ */
 @Composable
 internal fun SpeechPlaybackHost(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val controller = remember { SpeechPlaybackController(context, scope) }
+    val controller = remember {
+        val appContext = context.applicationContext
+        lateinit var created: SpeechPlaybackController
+        created = SpeechPlaybackController(
+            context = context,
+            scope = scope,
+            beforePlayback = { ReadAloudPlaybackService.start(appContext) { created.stop() } },
+            afterPlayback = { ReadAloudPlaybackService.stop(appContext) },
+            interruptOnScreenOff = false,
+        )
+        created
+    }
     val settings by remember { SpeechSettingsRepository.settingsFlow() }.collectAsState(initial = null)
-    SpeechLifecycle { controller.stop() }
+    DisposableEffect(controller) { onDispose { controller.stop() } }
     SpeechPlaybackErrors(controller)
     CompositionLocalProvider(
         LocalSpeechPlayback provides controller,
