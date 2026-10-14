@@ -1308,6 +1308,8 @@
   <string name="speech_dictation_finish">完成聽寫</string>
   <string name="speech_read_aloud">朗讀回答</string>
   <string name="speech_read_stop">停止朗讀</string>
+  <string name="speech_auto_read_on">自動朗讀已開啟，點按關閉</string>
+  <string name="speech_auto_read_off">自動朗讀已關閉，點按開啟</string>
   <string name="read_aloud_channel">朗讀</string>
   <string name="read_aloud_notification_title">Eta 正在朗讀</string>
   <string name="speech_mic_permission">請允許 Eta 使用麥克風</string>

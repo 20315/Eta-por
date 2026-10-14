@@ -1343,6 +1343,8 @@
   <string name="speech_dictation_finish">Finish dictation</string>
   <string name="speech_read_aloud">Read aloud</string>
   <string name="speech_read_stop">Stop reading</string>
+  <string name="speech_auto_read_on">Auto read-aloud on, tap to turn off</string>
+  <string name="speech_auto_read_off">Auto read-aloud off, tap to turn on</string>
   <string name="read_aloud_channel">Read aloud</string>
   <string name="read_aloud_notification_title">Eta is reading aloud</string>
   <string name="speech_mic_permission">Allow Eta to use the microphone</string>
