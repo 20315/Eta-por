@@ -916,7 +916,14 @@
     <item quantity="other">已取得 %d 個模型</item>
   </plurals>
   <string name="provider_models_endpoint_summary">讀取 %1$s 的 /models 清單</string>
-  <string name="provider_models_fetched_filtered">已取得 %1$d 個模型，略過 %2$d 個非對話模型</string>
+  <string name="provider_models_up_to_date">已是最新，沒有新模型</string>
+  <plurals name="provider_models_added">
+    <item quantity="other">已新增 %d 個模型</item>
+  </plurals>
+  <string name="remote_model_import_title">新增模型</string>
+  <string name="remote_model_import_summary">遠端有 %1$d 個尚未新增的模型</string>
+  <string name="remote_model_import_pick_hint">選擇要新增的模型</string>
+  <string name="remote_model_import_confirm">新增 %1$d 個</string>
   <string name="provider_model_list_count">模型清單（共 %1$d 個）</string>
   <string name="provider_model_list_matches">模型清單（符合 %1$d / %2$d 個）</string>
   <string name="provider_model_saved">已儲存：%1$s</string>

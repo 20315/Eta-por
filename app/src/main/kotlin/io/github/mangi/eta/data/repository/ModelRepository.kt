@@ -92,8 +92,26 @@ internal object ModelRepository {
         }
     }
 
-    suspend fun syncRemoteModels(providerId: String, fetched: List<Model>): RemoteModelSyncResult =
+    /** 拉取结果里尚未添加到该服务商的模型；聚合平台动辄上百个，由用户挑选后再加入。 */
+    suspend fun newRemoteModels(providerId: String, fetched: List<Model>): List<Model> {
+        val existing = currentModels(providerId).mapTo(mutableSetOf()) { it.modelId.normalizedModelId() }
+        return fetched
+            .filter { it.modelId.isNotBlank() }
+            .distinctBy { it.modelId.normalizedModelId() }
+            .filterNot { it.modelId.normalizedModelId() in existing }
+    }
+
+    /**
+     * 已添加的模型用远端元数据刷新，远端不再返回的远端模型移除；
+     * 新模型只加入 [adoptedModelIds] 中由用户选中的那些。
+     */
+    suspend fun syncRemoteModels(
+        providerId: String,
+        fetched: List<Model>,
+        adoptedModelIds: Set<String>,
+    ): RemoteModelSyncResult =
         mutationMutex.withLock {
+            val adopted = adoptedModelIds.mapTo(mutableSetOf()) { it.normalizedModelId() }
             val remoteByKey = fetched
                 .asSequence()
                 .filter { it.modelId.isNotBlank() }
@@ -133,7 +151,7 @@ internal object ModelRepository {
                     }
                 }
                 remoteByKey.forEach { (key, remote) ->
-                    if (key !in consumed) {
+                    if (key !in consumed && key in adopted) {
                         add(
                             remote.copy(
                                 id = remote.id.ifBlank(::newId),

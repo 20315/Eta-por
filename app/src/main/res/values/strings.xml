@@ -941,7 +941,15 @@
     <item quantity="other">Fetched %d models</item>
   </plurals>
   <string name="provider_models_endpoint_summary">Read the /models list from %1$s</string>
-  <string name="provider_models_fetched_filtered">Fetched %1$d models; filtered out %2$d non-chat models</string>
+  <string name="provider_models_up_to_date">Up to date, no new models</string>
+  <plurals name="provider_models_added">
+    <item quantity="one">Added %d model</item>
+    <item quantity="other">Added %d models</item>
+  </plurals>
+  <string name="remote_model_import_title">Add models</string>
+  <string name="remote_model_import_summary">%1$d new models available</string>
+  <string name="remote_model_import_pick_hint">Pick the models to add</string>
+  <string name="remote_model_import_confirm">Add %1$d</string>
   <string name="provider_model_list_count">Models (%1$d)</string>
   <string name="provider_model_list_matches">Models (%1$d of %2$d match)</string>
   <string name="provider_model_saved">Saved: %1$s</string>

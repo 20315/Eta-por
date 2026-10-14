@@ -175,6 +175,7 @@ internal fun ProviderModelsTab(
     var selectedModelIds by remember(provider.id) { mutableStateOf(setOf<String>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var modelSearchQuery by remember(provider.id) { mutableStateOf("") }
+    var pendingImport by remember(provider.id) { mutableStateOf<RemoteModelImport?>(null) }
     val normalizedModelSearchQuery = modelSearchQuery.trim()
     val filteredModels = remember(provider.models, modelSearchQuery) {
         filterProviderModels(provider.models, modelSearchQuery)
@@ -229,25 +230,20 @@ internal fun ProviderModelsTab(
                                         return@launch
                                     }
                                     val chatModels = models.filter(RemoteModelFetcher::isChatCapableModel)
-                                    val sync = ModelRepository.syncRemoteModels(provider.id, chatModels)
+                                    val candidates = ModelRepository.newRemoteModels(provider.id, chatModels)
+                                    if (candidates.isNotEmpty()) {
+                                        pendingImport = RemoteModelImport(chatModels, candidates)
+                                        return@launch
+                                    }
+                                    // 没有新模型时仍同步一次，刷新已添加模型的元数据并移除远端已下线的模型。
+                                    val sync = ModelRepository.syncRemoteModels(provider.id, chatModels, emptySet())
                                     if (sync.applied) {
                                         RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
                                     }
-                                    val filteredCount = models.size - chatModels.size
-                                    message = if (!sync.applied) {
-                                        context.getString(R.string.page_the_remote_end_did_not_return_a_usable_conversation__781487)
-                                    } else if (filteredCount > 0) {
-                                        context.getString(
-                                            R.string.provider_models_fetched_filtered,
-                                            chatModels.size,
-                                            filteredCount,
-                                        )
+                                    message = if (sync.applied) {
+                                        context.getString(R.string.provider_models_up_to_date)
                                     } else {
-                                        context.resources.getQuantityString(
-                                            R.plurals.provider_models_fetched,
-                                            chatModels.size,
-                                            chatModels.size,
-                                        )
+                                        context.getString(R.string.page_the_remote_end_did_not_return_a_usable_conversation__781487)
                                     }
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
@@ -551,6 +547,37 @@ internal fun ProviderModelsTab(
             )
         }
     }
+
+    RemoteModelImportSheet(
+        pending = pendingImport,
+        onDismissRequest = { pendingImport = null },
+        onConfirm = { pending, adopted ->
+            pendingImport = null
+            scope.launch {
+                isMutatingModel = true
+                try {
+                    val sync = ModelRepository.syncRemoteModels(provider.id, pending.fetched, adopted)
+                    if (sync.applied) {
+                        RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
+                    }
+                    message = context.resources.getQuantityString(
+                        R.plurals.provider_models_added,
+                        sync.addedCount,
+                        sync.addedCount,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (throwable: Throwable) {
+                    message = context.getString(
+                        R.string.provider_error,
+                        throwable.message ?: context.getString(R.string.provider_sync_failed),
+                    )
+                } finally {
+                    isMutatingModel = false
+                }
+            }
+        },
+    )
 }
 
 /** 多选模式底部悬浮操作栏：退出在左，已选数量其次，全选与删除在右；删除沿用统一破坏性配色。 */
