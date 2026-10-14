@@ -104,6 +104,9 @@ internal object ModelRepository {
     /**
      * 已添加的模型用远端元数据刷新，远端不再返回的远端模型移除；
      * 新模型只加入 [adoptedModelIds] 中由用户选中的那些。
+     *
+     * 运行窗口只读保存的 contextWindowOverride。远端标注了窗口时在这里写入，
+     * 等同于替用户填好，之后仍可在编辑页修改；远端未标注就保持空，不猜测。
      */
     suspend fun syncRemoteModels(
         providerId: String,
@@ -139,7 +142,8 @@ internal object ModelRepository {
                                     isBuiltIn = stored.isBuiltIn || remote.isBuiltIn,
                                     customHeaders = stored.customHeaders,
                                     customBody = stored.customBody,
-                                    contextWindowOverride = stored.contextWindowOverride,
+                                    // 用户填过的窗口优先；空着时用远端标注补上，省去手填。
+                                    contextWindowOverride = stored.contextWindowOverride ?: remote.contextWindow,
                                     reasoningOverride = stored.reasoningOverride,
                                     reasoningCapabilitiesOverride = stored.reasoningCapabilitiesOverride,
                                     source = stored.source,
@@ -158,6 +162,7 @@ internal object ModelRepository {
                                 modelId = remote.modelId.trim(),
                                 displayName = remote.displayName.trim().ifBlank { remote.modelId.trim() },
                                 isBuiltIn = false,
+                                contextWindowOverride = remote.contextWindow,
                                 source = ModelSource.REMOTE,
                             )
                         )

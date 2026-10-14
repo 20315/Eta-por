@@ -413,7 +413,6 @@
   <string name="ui_click_to_reinstall_dc60de">Click to reinstall</string>
   <string name="ui_environmental_status_5b32a1">Environment status</string>
   <string name="ui_user_skills_748e7f">Installed by you</string>
-  <string name="ui_determined_by_model_or_provider_06c326">Determined by model or provider</string>
   <string name="ui_long_press_the_power_button_1958d0">Long press the power button</string>
   <string name="ui_leave_blank_to_use_the_default_mobile_agent_prompt_w_21e7c8">Leave blank to use the default mobile Agent system prompt</string>
   <string name="ui_knew_cb63c6">Got it</string>
@@ -587,7 +586,6 @@
   <string name="page_save_failed_40525a">Save failed</string>
   <string name="page_repair_590253">repair</string>
   <string name="page_stop_loading_c62fbc">Stop loading</string>
-  <string name="page_allow_thinking_to_be_turned_off_during_conversations_5a32a9">Allow Reasoning to be disabled in conversations</string>
   <string name="page_select_none_ba20eb">Select none</string>
   <string name="page_select_all_3e44b2">Select all</string>
   <string name="page_delete_3755f5">delete</string>
@@ -942,6 +940,11 @@
   </plurals>
   <string name="provider_models_endpoint_summary">Read the /models list from %1$s</string>
   <string name="provider_models_up_to_date">Up to date, no new models</string>
+  <string name="provider_context_window_hint">Pick a common size or type one; used to decide when to compact</string>
+  <string name="provider_context_window_invalid">Enter a positive integer</string>
+  <string name="provider_context_window_value">About %1$s tokens</string>
+  <string name="provider_context_window_usage">Conversations compact automatically as they approach this size</string>
+  <string name="provider_reasoning_efforts_title">Available effort levels</string>
   <plurals name="provider_models_added">
     <item quantity="one">Added %d model</item>
     <item quantity="other">Added %d models</item>

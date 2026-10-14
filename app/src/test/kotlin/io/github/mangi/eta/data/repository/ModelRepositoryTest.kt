@@ -150,6 +150,7 @@ class ModelRepositoryTest {
                     id = "remote-new",
                     modelId = "remote-new",
                     displayName = "Remote New",
+                    contextWindow = 262_144,
                     source = ModelSource.REMOTE,
                 ),
                 Model(
@@ -177,6 +178,8 @@ class ModelRepositoryTest {
         )
         assertEquals(ModelSource.CATALOG, restored.getValue("catalog-model").source)
         assertEquals(ModelSource.REMOTE, restored.getValue("remote-new").source)
+        assertEquals(262_144, restored.getValue("remote-new").effectiveContextWindow)
+        assertEquals(null, restored.getValue("catalog-model").effectiveContextWindow)
 
         val emptyResult = ModelRepository.syncRemoteModels(PROVIDER_ID, emptyList(), emptySet())
         assertFalse(emptyResult.applied)

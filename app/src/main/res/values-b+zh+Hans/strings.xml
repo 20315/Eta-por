@@ -403,7 +403,6 @@
   <string name="ui_click_to_reinstall_dc60de">点击重新安装</string>
   <string name="ui_environmental_status_5b32a1">环境状态</string>
   <string name="ui_user_skills_748e7f">用户安装</string>
-  <string name="ui_determined_by_model_or_provider_06c326">由模型或 Provider 决定</string>
   <string name="ui_long_press_the_power_button_1958d0">电源键长按</string>
   <string name="ui_leave_blank_to_use_the_default_mobile_agent_prompt_w_21e7c8">留空使用默认手机 Agent 提示词</string>
   <string name="ui_knew_cb63c6">知道了</string>
@@ -570,7 +569,6 @@
   <string name="page_save_failed_40525a">保存失败</string>
   <string name="page_repair_590253">修复</string>
   <string name="page_stop_loading_c62fbc">停止加载</string>
-  <string name="page_allow_thinking_to_be_turned_off_during_conversations_5a32a9">允许在对话中关闭思考</string>
   <string name="page_select_none_ba20eb">全不选</string>
   <string name="page_select_all_3e44b2">全选</string>
   <string name="page_delete_3755f5">删除</string>
@@ -929,6 +927,11 @@
   </plurals>
   <string name="provider_models_endpoint_summary">读取 %1$s 的 /models 列表</string>
   <string name="provider_models_up_to_date">已是最新，没有新模型</string>
+  <string name="provider_context_window_hint">选择常用大小或手动填写，用于判断何时自动压缩</string>
+  <string name="provider_context_window_invalid">请输入正整数</string>
+  <string name="provider_context_window_value">约 %1$s tokens</string>
+  <string name="provider_context_window_usage">对话接近这个长度时会自动压缩</string>
+  <string name="provider_reasoning_efforts_title">可选档位</string>
   <plurals name="provider_models_added">
     <item quantity="other">已添加 %d 个模型</item>
   </plurals>

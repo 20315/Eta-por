@@ -262,14 +262,14 @@ private fun ModelSheetContent(
                 modifier = Modifier.padding(bottom = 6.dp),
             ) {
                 item(key = "all") {
-                    ProviderFilterChip(
+                    EtaChoiceChip(
                         text = stringResource(R.string.model_picker_filter_all),
                         selected = providerFilter == null,
                         onClick = { providerFilter = null },
                     )
                 }
                 items(state.providerGroups, key = { it.providerId }) { group ->
-                    ProviderFilterChip(
+                    EtaChoiceChip(
                         text = group.providerName,
                         selected = providerFilter == group.providerId,
                         onClick = { providerFilter = group.providerId },
@@ -338,31 +338,6 @@ private fun rememberConfirmedSelection(onConfirm: (String) -> Unit): ConfirmedSe
     val scope = rememberCoroutineScope()
     val currentOnConfirm by rememberUpdatedState(onConfirm)
     return remember { ConfirmedSelection({ currentOnConfirm(it) }) { block -> scope.launch { block() } } }
-}
-
-@Composable
-private fun ProviderFilterChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.footnote1,
-        color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        maxLines = 1,
-        modifier = Modifier
-            .squircleSurface(
-                color = if (selected) {
-                    MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)
-                } else {
-                    MiuixTheme.colorScheme.surfaceContainerHigh
-                },
-                cornerRadius = 16.dp,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
-    )
 }
 
 @Composable

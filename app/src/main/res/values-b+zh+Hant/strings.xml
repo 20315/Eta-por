@@ -391,7 +391,6 @@
   <string name="ui_click_to_reinstall_dc60de">點選重新安裝</string>
   <string name="ui_environmental_status_5b32a1">環境狀態</string>
   <string name="ui_user_skills_748e7f">使用者安裝</string>
-  <string name="ui_determined_by_model_or_provider_06c326">由模型或 Provider 決定</string>
   <string name="ui_long_press_the_power_button_1958d0">電源鍵長按</string>
   <string name="ui_leave_blank_to_use_the_default_mobile_agent_prompt_w_21e7c8">留空使用預設手機 Agent 提示詞</string>
   <string name="ui_knew_cb63c6">知道了</string>
@@ -558,7 +557,6 @@
   <string name="page_save_failed_40525a">儲存失敗</string>
   <string name="page_repair_590253">修復</string>
   <string name="page_stop_loading_c62fbc">停止載入</string>
-  <string name="page_allow_thinking_to_be_turned_off_during_conversations_5a32a9">允許在對話中關閉思考</string>
   <string name="page_select_none_ba20eb">全不選</string>
   <string name="page_select_all_3e44b2">全選</string>
   <string name="page_delete_3755f5">刪除</string>
@@ -917,6 +915,11 @@
   </plurals>
   <string name="provider_models_endpoint_summary">讀取 %1$s 的 /models 清單</string>
   <string name="provider_models_up_to_date">已是最新，沒有新模型</string>
+  <string name="provider_context_window_hint">選擇常用大小或手動填寫，用於判斷何時自動壓縮</string>
+  <string name="provider_context_window_invalid">請輸入正整數</string>
+  <string name="provider_context_window_value">約 %1$s tokens</string>
+  <string name="provider_context_window_usage">對話接近這個長度時會自動壓縮</string>
+  <string name="provider_reasoning_efforts_title">可選檔位</string>
   <plurals name="provider_models_added">
     <item quantity="other">已新增 %d 個模型</item>
   </plurals>

@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -70,7 +71,7 @@ import io.github.mangi.eta.data.repository.RemoteModelFetcher
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.components.EtaArrowPreference
 import io.github.mangi.eta.ui.components.EtaCard
-import io.github.mangi.eta.ui.components.EtaCheckboxPreference
+import io.github.mangi.eta.ui.components.EtaChoiceChip
 import io.github.mangi.eta.ui.components.EtaOverlayDialog
 import io.github.mangi.eta.ui.components.EtaPreferenceColors
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
@@ -96,7 +97,6 @@ import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -110,6 +110,12 @@ private val editableReasoningEfforts = listOf(
     ReasoningEffort.XHIGH,
     ReasoningEffort.MAX,
 )
+
+/**
+ * 常见上下文窗口档位。取十进制整数：标称 262,144、1,048,576 的模型按 256K、1M 填写只会略早压缩，
+ * 不会越过真实上限。
+ */
+internal val contextWindowPresets = listOf(128_000, 200_000, 256_000, 1_000_000)
 
 private val modelDialogBodyMaxHeight = 520.dp
 private val modelDialogChromeHeight = 112.dp
@@ -740,7 +746,8 @@ private fun ModelEditDialog(
     var displayName by remember(model.id, isNew) { mutableStateOf(model.displayName) }
     var modelId by remember(model.id, isNew) { mutableStateOf(model.modelId) }
     var contextWindowOverrideText by remember(model.id, isNew) {
-        mutableStateOf(model.contextWindowOverride?.toString().orEmpty())
+        // 早先拉取、未写入窗口的模型也带着远端标注，打开编辑时直接预填。
+        mutableStateOf((model.contextWindowOverride ?: model.contextWindow)?.toString().orEmpty())
     }
     var reasoningOverrideActive by remember(model.id, isNew) {
         mutableStateOf(
@@ -830,7 +837,7 @@ private fun ModelEditDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 TextField(
                     value = contextWindowOverrideText,
-                    onValueChange = { contextWindowOverrideText = it },
+                    onValueChange = { value -> contextWindowOverrideText = value.filter(Char::isDigit) },
                     label = stringResource(R.string.ui_context_length_tokens_227860),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -839,7 +846,40 @@ private fun ModelEditDialog(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                val contextValue = contextWindowOverrideText.toIntOrNull()
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 10.dp),
+                ) {
+                    contextWindowPresets.forEach { preset ->
+                        EtaChoiceChip(
+                            text = formatCompactTokenCount(preset),
+                            selected = contextValue == preset,
+                            onClick = { contextWindowOverrideText = preset.toString() },
+                            enabled = !isSaving,
+                        )
+                    }
+                }
+                Text(
+                    text = when {
+                        contextWindowOverrideText.isBlank() ->
+                            stringResource(R.string.provider_context_window_hint)
+                        contextError != null ->
+                            stringResource(R.string.provider_context_window_invalid)
+                        contextValue != null && contextValue !in contextWindowPresets ->
+                            stringResource(R.string.provider_context_window_value, formatCompactTokenCount(contextValue))
+                        else -> stringResource(R.string.provider_context_window_usage)
+                    },
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = if (contextError != null && contextWindowOverrideText.isNotBlank()) {
+                        StatusError
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    },
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 EtaPreferenceGroup(modifier = Modifier.fillMaxWidth()) {
                     EtaSwitchPreference(
                         checked = reasoningEnabled,
@@ -863,35 +903,35 @@ private fun ModelEditDialog(
                     )
                     if (reasoningEnabled) {
                         EtaPreferenceDivider(hasLeading = false)
-                        EtaCheckboxPreference(
-                            title = ReasoningEffort.DEFAULT.displayName,
-                            summary = stringResource(R.string.ui_determined_by_model_or_provider_06c326),
-                            checked = true,
-                            onCheckedChange = null,
-                            checkboxLocation = CheckboxLocation.End,
-                            enabled = false,
-                        )
-                        editableReasoningEfforts.forEach { effort ->
-                            EtaPreferenceDivider(hasLeading = false)
-                            EtaCheckboxPreference(
-                                title = effort.displayName,
-                                summary = if (effort == ReasoningEffort.OFF) {
-                                    context.getString(R.string.page_allow_thinking_to_be_turned_off_during_conversations_5a32a9)
-                                } else {
-                                    null
-                                },
-                                checked = effort in selectedReasoningEfforts,
-                                onCheckedChange = { checked ->
-                                    reasoningOverrideActive = true
-                                    selectedReasoningEfforts = if (checked) {
-                                        selectedReasoningEfforts + effort
-                                    } else {
-                                        selectedReasoningEfforts - effort
-                                    }
-                                },
-                                checkboxLocation = CheckboxLocation.End,
-                                enabled = !isSaving,
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Text(
+                                text = stringResource(R.string.provider_reasoning_efforts_title),
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
+                            // Default 始终可用（交给模型或 Provider 决定），不作为可选项展示。
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 10.dp),
+                            ) {
+                                editableReasoningEfforts.forEach { effort ->
+                                    val checked = effort in selectedReasoningEfforts
+                                    EtaChoiceChip(
+                                        text = effort.displayName,
+                                        selected = checked,
+                                        onClick = {
+                                            reasoningOverrideActive = true
+                                            selectedReasoningEfforts = if (checked) {
+                                                selectedReasoningEfforts - effort
+                                            } else {
+                                                selectedReasoningEfforts + effort
+                                            }
+                                        },
+                                        enabled = !isSaving,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -899,7 +939,7 @@ private fun ModelEditDialog(
                     text = stringResource(R.string.ui_only_check_the_ranges_actually_supported_by_the_mode_2c343d),
                     style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp),
                 )
                 error?.let { message ->
                     Text(
