@@ -300,7 +300,7 @@
   <string name="ui_context_length_tokens_227860">內容長度上限（tokens）</string>
   <string name="ui_bright_screen_evokes_automatic_voice_input_4358fe">亮屏喚起自動語音輸入</string>
   <string name="ui_only_take_over_with_agent_prefix_d17556">僅以 /agent 前綴接管</string>
-  <string name="ui_only_check_the_ranges_actually_supported_by_the_mode_2c343d">僅勾選模型或網關實際支援的檔位；不支援的組合會在請求前明確報錯。</string>
+  <string name="ui_only_check_the_ranges_actually_supported_by_the_mode_2c343d">只選模型或閘道實際支援的檔位</string>
   <string name="ui_preferences_and_strategies_2abd3c">偏好與策略</string>
   <string name="ui_stop_a17f70">停止</string>
   <string name="ui_allow_sensitive_device_operation_3d42ea">允許敏感裝置操作</string>
@@ -919,7 +919,6 @@
   <string name="provider_context_window_invalid">請輸入正整數</string>
   <string name="provider_context_window_value">約 %1$s tokens</string>
   <string name="provider_context_window_usage">對話接近這個長度時會自動壓縮</string>
-  <string name="provider_reasoning_efforts_title">可選檔位</string>
   <plurals name="provider_models_added">
     <item quantity="other">已新增 %d 個模型</item>
   </plurals>
@@ -941,7 +940,11 @@
   <plurals name="provider_models_selected">
     <item quantity="other">已選取 %d 個</item>
   </plurals>
-  <string name="provider_auto_reasoning_supported">自動：支援思考</string>
+  <plurals name="provider_delete_models_action">
+    <item quantity="other">刪除 %d 個模型</item>
+  </plurals>
+  <string name="provider_delete_models_pick_hint">選擇要刪除的模型</string>
+  <string name="provider_auto_reasoning_detected">已自動識別</string>
   <string name="provider_auto_reasoning_unknown">自動：不支援或未知</string>
   <string name="provider_context_tag">%1$s 內容脈絡</string>
   <string name="provider_sync_failed">同步失敗</string>

@@ -322,7 +322,7 @@
   <string name="ui_context_length_tokens_227860">Context window (tokens)</string>
   <string name="ui_bright_screen_evokes_automatic_voice_input_4358fe">Bright screen evokes automatic voice input</string>
   <string name="ui_only_take_over_with_agent_prefix_d17556">Only take over with /agent prefix</string>
-  <string name="ui_only_check_the_ranges_actually_supported_by_the_mode_2c343d">Only check the ranges actually supported by the model or gateway; unsupported combinations will clearly report an error before requesting.</string>
+  <string name="ui_only_check_the_ranges_actually_supported_by_the_mode_2c343d">Only pick levels the model or gateway supports.</string>
   <string name="ui_preferences_and_strategies_2abd3c">Preferences and Strategies</string>
   <string name="ui_stop_a17f70">stop</string>
   <string name="ui_allow_sensitive_device_operation_3d42ea">Allow sensitive device operation</string>
@@ -944,7 +944,6 @@
   <string name="provider_context_window_invalid">Enter a positive integer</string>
   <string name="provider_context_window_value">About %1$s tokens</string>
   <string name="provider_context_window_usage">Conversations compact automatically as they approach this size</string>
-  <string name="provider_reasoning_efforts_title">Available effort levels</string>
   <plurals name="provider_models_added">
     <item quantity="one">Added %d model</item>
     <item quantity="other">Added %d models</item>
@@ -970,7 +969,12 @@
     <item quantity="one">%d selected</item>
     <item quantity="other">%d selected</item>
   </plurals>
-  <string name="provider_auto_reasoning_supported">Auto: supports reasoning</string>
+  <plurals name="provider_delete_models_action">
+    <item quantity="one">Delete %d model</item>
+    <item quantity="other">Delete %d models</item>
+  </plurals>
+  <string name="provider_delete_models_pick_hint">Pick models to delete</string>
+  <string name="provider_auto_reasoning_detected">Detected automatically</string>
   <string name="provider_auto_reasoning_unknown">Auto: unsupported or unknown</string>
   <string name="provider_context_tag">%1$s context</string>
   <string name="provider_sync_failed">Sync failed</string>
