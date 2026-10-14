@@ -799,7 +799,7 @@ internal class AgentLocalTools(
             .put("root_available", state.isGranted).put("status", state.status.name.lowercase(Locale.ROOT))
             .put("checking", state.isChecking).put("su_present", state.suPresent)
             .put("uid", if (state.isGranted) 0 else JSONObject.NULL)
-            .put("message", if (state.isGranted) "已确认 Root 授权；需要特权时显式传 identity=root" else
+            .put("message", if (state.isGranted) "已确认 Root 授权；后续新命令默认使用 Root" else
                 "尚未确认 Root 授权；请根据 status 检查授权或检测结果，默认 user 不表示终端不支持 Root")
             .toString()
     }

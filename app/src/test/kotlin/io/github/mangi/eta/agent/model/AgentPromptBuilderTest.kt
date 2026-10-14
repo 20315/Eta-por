@@ -16,24 +16,27 @@ import org.junit.Test
 
 class AgentPromptBuilderTest {
     @Test
-    fun rootEvidenceDistinguishesUnconfirmedStatesFromUnsupportedDevices() {
-        for ((state, expected) in listOf(
-            RootAccessState(isChecking = true) to "Root 授权正在检测",
-            RootAccessState(RootAccessStatus.UNKNOWN) to "Root 授权尚未检测完成",
-            RootAccessState(RootAccessStatus.TIMED_OUT) to "Root 检测超时",
-            RootAccessState(RootAccessStatus.DENIED) to "最近一次 Root 检测未获授权",
-            RootAccessState(RootAccessStatus.UNAVAILABLE) to "最近一次 Root 探测未能使用 su",
-            RootAccessState(RootAccessStatus.GRANTED, suPresent = true) to "已确认 UID=0",
-        )) {
-            val contents = AgentPromptBuilder.buildSystemMessages(
-                config = modelConfig("", terminalTools = true, browserTools = false),
-                skillContext = SkillContext.EMPTY, memoryContext = AgentMemoryContext.DISABLED,
-                rootAvailable = state.isGranted, rootState = state,
-            ).systemContents().joinToString()
-            assertTrue(contents, contents.contains(expected))
+    fun rootPromptOnlyDependsOnGrantSoTransientProbeStatesKeepThePrefixStable() {
+        fun prompt(state: RootAccessState) = AgentPromptBuilder.buildSystemMessages(
+            config = modelConfig("", terminalTools = true, browserTools = false),
+            skillContext = SkillContext.EMPTY, memoryContext = AgentMemoryContext.DISABLED,
+            rootAvailable = state.isGranted,
+        ).toString()
+        val ungranted = listOf(
+            RootAccessState(isChecking = true),
+            RootAccessState(RootAccessStatus.UNKNOWN),
+            RootAccessState(RootAccessStatus.TIMED_OUT),
+            RootAccessState(RootAccessStatus.DENIED),
+            RootAccessState(RootAccessStatus.UNAVAILABLE),
+        ).map(::prompt)
+        assertEquals(1, ungranted.distinct().size)
+        val granted = prompt(RootAccessState(RootAccessStatus.GRANTED, suPresent = true))
+        assertEquals(granted, prompt(RootAccessState(RootAccessStatus.GRANTED, suPresent = true, isChecking = true)))
+        assertTrue(granted.contains("Root 授权已确认"))
+        assertTrue(ungranted.first().contains("这不代表设备不支持 Root"))
+        for (contents in ungranted + granted) {
             assertTrue(contents.contains("identity=user 是显式选择"))
             assertTrue(contents.contains("terminal(action=check_root)"))
-            assertFalse(contents.contains("当前没有设备 Root 权限"))
         }
     }
 

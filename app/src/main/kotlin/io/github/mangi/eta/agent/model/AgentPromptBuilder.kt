@@ -4,8 +4,6 @@ import io.github.mangi.eta.agent.memory.AgentMemoryContext
 import io.github.mangi.eta.agent.skill.SkillContext
 import io.github.mangi.eta.agent.roleplay.RoleplayRunContext
 import io.github.mangi.eta.agent.terminal.TerminalExecutionContext
-import io.github.mangi.eta.agent.device.RootAccessState
-import io.github.mangi.eta.agent.device.RootAccessStatus
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,9 +19,8 @@ internal object AgentPromptBuilder {
         rootAvailable: Boolean = false,
         roleplayContext: RoleplayRunContext? = null,
         executionContext: TerminalExecutionContext? = null,
-        rootState: RootAccessState? = null,
     ): JSONArray {
-        val messages = buildSystemMessages(config, skillContext, memoryContext, rootAvailable, roleplayContext, executionContext, rootState)
+        val messages = buildSystemMessages(config, skillContext, memoryContext, rootAvailable, roleplayContext, executionContext)
         history.forEach { item ->
             runCatching { AgentConversationCodec.toJsonObject(item) }.getOrNull()?.let(messages::put)
         }
@@ -31,6 +28,11 @@ internal object AgentPromptBuilder {
         return messages
     }
 
+    /**
+     * 系统提示是请求前缀的开头，任何字节变化都会让其后的全部历史失去缓存。
+     * 因此这里只放会话内稳定的事实：Root 只区分“已授权/未授权”，检测进度、失败原因等
+     * 瞬时状态由 check_root 的工具结果告知模型，不进入系统提示。
+     */
     fun buildSystemMessages(
         config: AgentModelClient.ModelConfig,
         skillContext: SkillContext,
@@ -38,7 +40,6 @@ internal object AgentPromptBuilder {
         rootAvailable: Boolean,
         roleplayContext: RoleplayRunContext? = null,
         executionContext: TerminalExecutionContext? = null,
-        rootState: RootAccessState? = null,
     ): JSONArray {
         val messages = JSONArray()
         if (roleplayContext == null && config.systemPrompt.isNotBlank()) {
@@ -111,7 +112,7 @@ internal object AgentPromptBuilder {
         if (config.terminalTools) {
             messages.put(systemMessage(
                 "Eta 内置文件与终端工具。文件和命令共用本次运行的默认身份与工作区；已知路径可直接读取或写入，不必先查目录。" +
-                    rootInstructions(rootAvailable, rootState) +
+                    rootInstructions(rootAvailable) +
                     "普通命令调用 terminal，只需 command；持续 Shell 工作可 action=open 后用 session_id 复用，目录变化用会话内的 cd。" +
                     "希望回复后继续运行的命令使用 terminal_job：start 提交任务，完成时会通知用户；list/read 查看进度，确实依赖结果时再 wait，stop 终止。日志路径可用于分页读取完整输出。跨任务服务使用 terminal_daemon。" +
                     "后台服务仍可能退出、被系统回收或随设备重启结束，以实际状态为准。" +
@@ -152,23 +153,16 @@ internal object AgentPromptBuilder {
         return messages
     }
 
-    private fun rootInstructions(available: Boolean, state: RootAccessState?): String {
-        val status = state?.status ?: if (available) RootAccessStatus.GRANTED else RootAccessStatus.UNKNOWN
-        val evidence = when {
-            state?.isChecking == true -> "Root 授权正在检测，尚未取得本次检测结果。"
-            status == RootAccessStatus.GRANTED -> "最近一次 Root 检测已确认 UID=0，Android 命令与文件工具默认直接使用 Root，无需先以 user 尝试，也无需重复检测。"
-            status == RootAccessStatus.UNAVAILABLE -> "最近一次 Root 探测未能使用 su，不据此推断设备永远不支持 Root。"
-            status == RootAccessStatus.DENIED -> "最近一次 Root 检测未获授权；用户可能已在 Root 管理器中更改授权。"
-            status == RootAccessStatus.TIMED_OUT -> "最近一次 Root 检测超时，结果未确认。"
-            status == RootAccessStatus.NOT_GRANTED -> "检测到 su，但尚未确认当前授权。"
-            else -> "Root 授权尚未检测完成。"
-        }
-        return evidence +
+    private fun rootInstructions(available: Boolean): String =
+        (if (available) {
+            "Root 授权已确认，Android 命令与文件工具默认直接使用 Root，无需先以 user 尝试，也无需重复检测。"
+        } else {
+            "Root 授权尚未确认；这不代表设备不支持 Root。"
+        }) +
             "identity=user 是显式选择 Eta App 身份，不代表终端没有 Root 通道。" +
             "用户说明已授权、授权状态发生变化或需要确认 Root 时，调用 terminal(action=check_root) 实际验证；" +
-            "它执行固定的 su -c 'id -u'，可能显示系统授权请求。成功后的新命令默认使用 Root；既有会话与后台任务保持创建时的身份。" +
+            "它执行固定的 su -c 'id -u'，可能显示系统授权请求，结果会说明最近一次检测的状态。成功后的新命令默认使用 Root；既有会话与后台任务保持创建时的身份。" +
             "不得根据 su 文件大小、是否为符号链接或 ro.build.type 推断 Root 真伪；结论以实际检测和工具结果为准。"
-    }
 
     private fun buildMemorySystemMessage(context: AgentMemoryContext, writable: Boolean): JSONObject? {
         if (!context.enabled) return null
@@ -180,6 +174,8 @@ internal object AgentPromptBuilder {
             } else {
                 appendLine("这是用户的现实记忆，在角色会话中只读；按需调用 memory_get，禁止把虚构人设或剧情写入此文件。剧情记忆使用 character_memory_get/character_memory_write。")
             }
+            // 快照在会话内保持不变，以免记忆写入后系统提示变化导致历史缓存失效。
+            appendLine("以下为本会话开始时的记忆快照；本会话已写入过记忆时，以最近一次 memory_write 或 memory_get 返回的 revision 与内容为准。")
             appendLine("revision=${context.revision} | bytes=${context.byteSize} | core_budget_chars=${context.coreBudgetChars}")
             if (context.coreContent.isNotBlank()) {
                 appendLine()
