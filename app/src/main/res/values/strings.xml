@@ -1112,8 +1112,8 @@
   <string name="model_not_selected">Not selected</string>
   <string name="conversation_model_unavailable">Model unavailable for this conversation. Using %1$s.</string>
   <string name="model_switch_current">Switch model. Current: %1$s</string>
-  <string name="model_collapse_provider">Collapse %1$s</string>
-  <string name="model_expand_provider">Expand %1$s</string>
+  <string name="model_picker_title">Choose model</string>
+  <string name="model_picker_filter_all">All</string>
   <string name="context_no_previous_usage">No usage data yet</string>
   <string name="context_no_model_limit">Context window unknown, so automatic compaction is off. You can still compact manually, or set the window in Settings → Model Providers.</string>
   <string name="context_usage_after_response">Measured after the first response</string>

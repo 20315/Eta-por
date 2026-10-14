@@ -83,6 +83,7 @@ import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.components.StatusError
 import io.github.mangi.eta.ui.components.StatusSuccess
+import io.github.mangi.eta.ui.model.ModelSearchQuery
 import io.github.mangi.eta.ui.model.formatCompactTokenCount
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -100,7 +101,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
-private val modelSearchSeparators = Regex("""[^\p{L}\p{N}]+""")
 private val editableReasoningEfforts = listOf(
     ReasoningEffort.OFF,
     ReasoningEffort.MINIMAL,
@@ -149,32 +149,10 @@ internal fun contextWindowInputError(
 }
 
 internal fun filterProviderModels(models: List<Model>, query: String): List<Model> {
-    val queryTokens = query.lowercase().split(modelSearchSeparators).filter(String::isNotBlank)
+    val search = ModelSearchQuery(query)
     return models
         .sortedBy { it.sortOrder }
-        .filter { model ->
-            if (queryTokens.isEmpty()) {
-                true
-            } else {
-                val searchableFields = listOf(model.displayName, model.modelId).map { field ->
-                    field.lowercase().filter(Char::isLetterOrDigit)
-                }
-                queryTokens.all { token ->
-                    searchableFields.any { field -> field.containsCharactersInOrder(token) }
-                }
-            }
-        }
-}
-
-private fun String.containsCharactersInOrder(query: String): Boolean {
-    var queryIndex = 0
-    for (character in this) {
-        if (character == query[queryIndex]) {
-            queryIndex++
-            if (queryIndex == query.length) return true
-        }
-    }
-    return false
+        .filter { model -> search.matches(model.displayName, model.modelId) }
 }
 
 @Composable
