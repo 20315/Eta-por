@@ -200,6 +200,11 @@ private fun MarkdownText(
 @Composable
 private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
     val style = scope.style
+    // 块级公式走 KaTeX 离线渲染（assets 内置，不联网）。
+    if (block.isMath) {
+        MathBlockView(tex = block.text.text, modifier = Modifier.padding(vertical = 4.dp))
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
