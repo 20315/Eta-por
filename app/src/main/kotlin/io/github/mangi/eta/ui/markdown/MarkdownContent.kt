@@ -205,6 +205,14 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
         MathBlockView(tex = block.text.text, modifier = Modifier.padding(vertical = 4.dp))
         return
     }
+    // 带文件路径的块（```markdown file=/abs/path）走文件卡片：可预览、可编辑、保存覆盖原文件。
+    val fileSpec = remember(block.language, block.text.text) {
+        markdownFileSpec(block.language, block.text.text)
+    }
+    if (fileSpec != null) {
+        MarkdownFileCard(path = fileSpec.path, content = fileSpec.content)
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -217,7 +225,7 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = block.language ?: stringResource(R.string.markdown_code_block),
+                text = block.language?.substringBefore(' ') ?: stringResource(R.string.markdown_code_block),
                 style = MiuixTheme.textStyles.footnote2,
                 color = style.secondaryColor,
                 maxLines = 1,
