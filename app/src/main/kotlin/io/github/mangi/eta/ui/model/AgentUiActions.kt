@@ -23,6 +23,9 @@ sealed interface AgentHomeAction {
     data object SearchJumpConsumed : AgentHomeAction
     /** 会话框上方小白条上滑：打开会话导航面板。 */
     data object OpenConversationNavigator : AgentHomeAction
+    /** 命令确认卡：确认执行 / 收起。 */
+    data object ConfirmAgentCommand : AgentHomeAction
+    data object DismissAgentCommandConfirm : AgentHomeAction
     data class DeleteMessage(val id: String) : AgentHomeAction
     data class RegenerateMessage(val id: String) : AgentHomeAction
     data class SelectReplyCandidate(val id: String, val index: Int) : AgentHomeAction

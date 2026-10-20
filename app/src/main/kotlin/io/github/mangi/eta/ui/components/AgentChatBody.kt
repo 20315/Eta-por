@@ -88,6 +88,8 @@ import io.github.mangi.eta.ui.app.AgentConversationRevisionReducer
 import io.github.mangi.eta.ui.app.LocalBlurEnabled
 import io.github.mangi.eta.ui.markdown.StreamingMarkdownState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
+import io.github.mangi.eta.ui.model.AgentCommand
+import io.github.mangi.eta.ui.model.CommandConfirmUi
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -185,6 +187,11 @@ internal fun AgentChatBody(
     /** 会话框上方的下拉小白条：上滑呼出会话导航。 */
     onOpenNavigator: () -> Unit = {},
     /** 斜杠命令与命令确认卡。 */
+    commands: List<AgentCommand> = emptyList(),
+    commandConfirm: CommandConfirmUi? = null,
+    onConfirmCommand: () -> Unit = {},
+    onDismissCommandConfirm: () -> Unit = {},
+    inputResetToken: Long = 0,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberLazyListState()
@@ -300,6 +307,11 @@ internal fun AgentChatBody(
             onResumeInterruptedRun = onResumeInterruptedRun,
             onDismissInterruptedRun = onDismissInterruptedRun,
             onOpenNavigator = onOpenNavigator,
+            commands = commands,
+            commandConfirm = commandConfirm,
+            onConfirmCommand = onConfirmCommand,
+            onDismissCommandConfirm = onDismissCommandConfirm,
+            inputResetToken = inputResetToken,
             modifier = modifier,
         )
     }
@@ -355,6 +367,11 @@ private fun AgentChatScaffold(
     onResumeInterruptedRun: () -> Unit = {},
     onDismissInterruptedRun: () -> Unit = {},
     onOpenNavigator: () -> Unit = {},
+    commands: List<AgentCommand> = emptyList(),
+    commandConfirm: CommandConfirmUi? = null,
+    onConfirmCommand: () -> Unit = {},
+    onDismissCommandConfirm: () -> Unit = {},
+    inputResetToken: Long = 0,
     modifier: Modifier = Modifier,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
@@ -406,6 +423,11 @@ private fun AgentChatScaffold(
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
                 onOpenNavigator = onOpenNavigator,
+                commands = commands,
+                commandConfirm = commandConfirm,
+                onConfirmCommand = onConfirmCommand,
+                onDismissCommandConfirm = onDismissCommandConfirm,
+                inputResetToken = inputResetToken,
             )
         },
     ) { innerPadding ->
@@ -1026,6 +1048,11 @@ private fun AgentChatBottomBar(
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
     onOpenNavigator: () -> Unit = {},
+    commands: List<AgentCommand> = emptyList(),
+    commandConfirm: CommandConfirmUi? = null,
+    onConfirmCommand: () -> Unit = {},
+    onDismissCommandConfirm: () -> Unit = {},
+    inputResetToken: Long = 0,
 ) {
     Column(
         modifier = Modifier
@@ -1086,6 +1113,20 @@ private fun AgentChatBottomBar(
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         ) {
             LocalProfileSwitchToast(modifier = Modifier.fillMaxWidth())
+            AnimatedVisibility(
+                visible = commandConfirm != null,
+                enter = fadeIn(tween(140)) + expandVertically(tween(160)),
+                exit = fadeOut(tween(100)) + shrinkVertically(tween(140)),
+            ) {
+                commandConfirm?.let { confirm ->
+                    AgentCommandConfirmCard(
+                        confirm = confirm,
+                        onAccept = onConfirmCommand,
+                        onDismiss = onDismissCommandConfirm,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+            }
             ChatNavigatorHandle(onOpen = onOpenNavigator)
             AgentChatInputBar(
                 input = input,
@@ -1118,6 +1159,8 @@ private fun AgentChatBottomBar(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                commands = commands,
+                inputResetToken = inputResetToken,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

@@ -97,6 +97,7 @@ import io.github.mangi.eta.ui.voice.SpeechSettingsScreen
 import io.github.mangi.eta.ui.voice.SpeechSynthesisScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.TextField
@@ -464,6 +465,8 @@ fun AgentAppRoot(
                                 AgentHomeAction.CancelMessageEdit -> agentState.cancelMessageEdit()
                                 AgentHomeAction.SearchJumpConsumed -> agentState.consumeSearchJump()
                                 AgentHomeAction.OpenConversationNavigator -> conversationNavigatorOpen = true
+                                AgentHomeAction.ConfirmAgentCommand -> agentState.resolveCommandConfirm(true)
+                                AgentHomeAction.DismissAgentCommandConfirm -> agentState.resolveCommandConfirm(false)
                                 AgentHomeAction.ResumeInterruptedRun -> agentState.resumeInterruptedRun()
                                 AgentHomeAction.DismissInterruptedRun -> agentState.dismissInterruptedRun()
                                 is AgentHomeAction.DeleteMessage -> {

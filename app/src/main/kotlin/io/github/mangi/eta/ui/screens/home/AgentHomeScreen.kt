@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
+import io.github.mangi.eta.ui.app.AgentCommands
 import io.github.mangi.eta.ui.components.AgentChatBody
 import io.github.mangi.eta.ui.components.LocalRoleplayChat
 import io.github.mangi.eta.ui.components.chatConversationCompositionKey
@@ -68,6 +69,11 @@ internal fun AgentHomeScreen(
             onRegenerateMessage = { id -> onAction(AgentHomeAction.RegenerateMessage(id)) },
             onSelectReplyCandidate = { id, index -> onAction(AgentHomeAction.SelectReplyCandidate(id, index)) },
             onOpenNavigator = { onAction(AgentHomeAction.OpenConversationNavigator) },
+            commands = AgentCommands.builtIns,
+            commandConfirm = state.commandConfirm,
+            inputResetToken = state.inputResetToken,
+            onConfirmCommand = { onAction(AgentHomeAction.ConfirmAgentCommand) },
+            onDismissCommandConfirm = { onAction(AgentHomeAction.DismissAgentCommandConfirm) },
             onSuggestionClick = { prompt ->
                 onAction(AgentHomeAction.SubmitMessage(prompt))
             },

@@ -96,6 +96,10 @@ internal data class AgentChatUiState(
     val searchJump: SearchJumpUiState? = null,
     /** 上次对话回合被中断、可以接着跑时的提示；瞬时状态，不落库。 */
     val resumableRun: ResumableRunUiState? = null,
+    /** 斜杠命令的确认卡：未知命令、或带副作用的命令执行前问一句；瞬时状态，不落库。 */
+    val commandConfirm: CommandConfirmUi? = null,
+    /** 输入框文本由本地持有，命令消费后靠这个递增令牌让它自己清空。 */
+    val inputResetToken: Long = 0,
 ) {
     val canCompactContext: Boolean get() = !isStreaming && messageEdit == null && history.any {
         !it.contextSummary && (it.role == "assistant" || it.role == "tool")
@@ -265,3 +269,17 @@ data class MessageEditUiState(
 internal fun AgentChatHomeUiState.roleplayChatUi(): RoleplayChatUi? = roleplay?.let {
     RoleplayChatUi(characterName = it.characterName, avatarPath = it.avatarPath, userName = it.userName)
 }
+
+/**
+ * 命令确认卡。
+ *
+ * @property commandName 需要二次确认的命令名；null 表示「这不是命令，要不要按原文发送」。
+ * @property payload 确认后要执行的原文（命令原文或待发送文本）。
+ */
+@Immutable
+internal data class CommandConfirmUi(
+    val title: String,
+    val detail: String,
+    val commandName: String?,
+    val payload: String,
+)

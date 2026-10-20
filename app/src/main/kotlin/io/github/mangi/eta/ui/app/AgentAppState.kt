@@ -50,11 +50,15 @@ import io.github.mangi.eta.data.repository.EtaBackupRepository
 import io.github.mangi.eta.data.repository.EtaBackupSummary
 import io.github.mangi.eta.data.repository.ProviderRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
+import io.github.mangi.eta.ui.app.AgentCommands
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
+import io.github.mangi.eta.ui.model.AgentCommand
+import io.github.mangi.eta.ui.model.AgentCommandInput
+import io.github.mangi.eta.ui.model.CommandConfirmUi
 import io.github.mangi.eta.ui.model.ConversationModeUi
 import io.github.mangi.eta.ui.model.ConversationNavEntry
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
@@ -72,6 +76,7 @@ import io.github.mangi.eta.ui.model.SearchJumpUiState
 import io.github.mangi.eta.ui.model.ResumableRunUiState
 import io.github.mangi.eta.ui.model.firstMatchMessageId
 import io.github.mangi.eta.ui.model.navEntries
+import io.github.mangi.eta.ui.model.parseAgentCommand
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
@@ -780,6 +785,163 @@ internal class AgentAppState(
         if (homeState.searchJump != null) homeState = homeState.copy(searchJump = null)
     }
 
+    /**
+     * 执行内置命令。
+     *
+     * 返回 true 表示这条输入已经被命令消费，不再走模型；false 交给上层当普通文本处理。
+     * 带副作用的命令第一次调用只弹确认卡，确认后用 confirmed = true 再进来一次。
+     */
+    fun runAgentCommand(command: AgentCommand, args: String, confirmed: Boolean = false): Boolean {
+        if (command.requiresConfirmation && !confirmed) {
+            val usage = if (args.isBlank()) "/" + command.name else "/" + command.name + " " + args
+            homeState = homeState.copy(
+                commandConfirm = CommandConfirmUi(
+                    title = appContext.getString(R.string.agent_command_confirm_title, usage),
+                    detail = command.summary,
+                    commandName = command.name,
+                    payload = usage,
+                ),
+            )
+            return true
+        }
+        return when (command.name) {
+            AgentCommands.NEW -> {
+                createConversation()
+                true
+            }
+
+            AgentCommands.COMPACT -> {
+                compactCurrentContext()
+                true
+            }
+
+            AgentCommands.MODEL -> {
+                resolveModelCommand(args)
+                true
+            }
+
+            AgentCommands.EFFORT -> {
+                resolveEffortCommand(args)
+                true
+            }
+
+            AgentCommands.STOP -> {
+                stopCurrentRun()
+                true
+            }
+
+            AgentCommands.PAUSE -> {
+                pauseCurrentRun()
+                true
+            }
+
+            AgentCommands.RESUME -> {
+                resumeCurrentRun()
+                true
+            }
+
+            AgentCommands.RENAME -> {
+                val name = args.trim()
+                val target = selectedConversationId
+                if (name.isBlank()) {
+                    toastText(appContext.getString(R.string.agent_command_rename_usage))
+                } else if (target != null) {
+                    renameConversation(target, name)
+                }
+                true
+            }
+
+            AgentCommands.STATUS -> {
+                toastText(statusSummary())
+                true
+            }
+
+            AgentCommands.HELP -> {
+                // 输入框文本在本地持有，这里只给一句提示；真正展开面板靠用户输入斜杠。
+                toastText(appContext.getString(R.string.agent_command_help_hint))
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    /** 确认卡上的两个按钮：确认则真正执行，取消只收起卡片。 */
+    fun resolveCommandConfirm(accept: Boolean) {
+        val confirm = homeState.commandConfirm ?: return
+        homeState = homeState.copy(commandConfirm = null)
+        if (!accept) return
+        val command = confirm.commandName?.let { name ->
+            AgentCommands.builtIns.firstOrNull { it.name == name }
+        }
+        if (command != null) {
+            val args = (parseAgentCommand(confirm.payload, AgentCommands.builtIns) as? AgentCommandInput.Run)?.args.orEmpty()
+            runAgentCommand(command, args, confirmed = true)
+        } else {
+            // 未知命令按原文发送：// 转义后重新走一遍，避免再次被当成命令。
+            sendCurrentMessage("//" + confirm.payload.removePrefix("/"))
+        }
+    }
+
+    private fun resolveModelCommand(args: String) {
+        val query = args.trim()
+        val models = modelPickerState.providerGroups.flatMap { it.models }
+        if (query.isBlank()) {
+            // 没有参数就列出可选模型，省得为了看一眼名字去开选择器。
+            val names = models.map { it.displayName }.take(6)
+            toastText(
+                if (names.isEmpty()) {
+                    appContext.getString(R.string.agent_command_model_empty)
+                } else {
+                    appContext.getString(R.string.agent_command_model_list, names.joinToString("、"))
+                },
+            )
+            return
+        }
+        val hit = models.firstOrNull { it.id == query }
+            ?: models.firstOrNull { it.modelId.equals(query, ignoreCase = true) }
+            ?: models.firstOrNull { it.displayName.contains(query, ignoreCase = true) }
+        if (hit == null) {
+            toastText(appContext.getString(R.string.agent_command_model_missing, query))
+        } else {
+            selectModel(hit.id)
+        }
+    }
+
+    private fun resolveEffortCommand(args: String) {
+        val value = args.trim().lowercase()
+        if (value.isBlank()) {
+            val levels = ReasoningEffort.entries.joinToString(" / ") { it.wireValue }
+            toastText(appContext.getString(R.string.agent_command_effort_list, levels))
+            return
+        }
+        val effort = ReasoningEffort.entries.firstOrNull {
+            it.wireValue.equals(value, ignoreCase = true) || it.displayName.equals(value, ignoreCase = true)
+        }
+        if (effort == null) {
+            toastText(appContext.getString(R.string.agent_command_effort_missing, value))
+        } else {
+            updateReasoningEffort(effort)
+        }
+    }
+
+    private fun statusSummary(): String {
+        val model = modelPickerState.selectedModel?.displayName
+            ?: appContext.getString(R.string.agent_command_status_no_model)
+        val turnCount = homeState.messages.count { it is UserMessageUi }
+        return appContext.getString(
+            R.string.agent_command_status_body,
+            model,
+            homeState.reasoningEffort.wireValue,
+            turnCount,
+            homeState.messages.size,
+        )
+    }
+
+    private fun toastText(text: String) {
+        Toast.makeText(appContext, text, Toast.LENGTH_SHORT).show()
+    }
+
     /** 会话导航：跳到当前会话里的指定消息，走的是搜索命中同一条滚动+高亮通道。 */
     fun jumpToMessage(messageId: String) {
         if (homeState.messages.none { message -> message.id == messageId }) return
@@ -1104,7 +1266,30 @@ internal class AgentAppState(
             ).show()
             return
         }
-        val prompt = (submittedText ?: homeState.input).trim()
+        // 斜杠命令：本地解析，命中就直接执行，不产生模型请求。
+        val rawInput = submittedText ?: homeState.input
+        val parsedCommand = parseAgentCommand(rawInput.trim(), AgentCommands.builtIns)
+        if (parsedCommand is AgentCommandInput.Run && runAgentCommand(parsedCommand.command, parsedCommand.args)) {
+            updateCurrentConversation(
+                homeState.copy(input = "", inputResetToken = homeState.inputResetToken + 1),
+            )
+            return
+        }
+        if (parsedCommand is AgentCommandInput.Unknown) {
+            homeState = homeState.copy(
+                commandConfirm = CommandConfirmUi(
+                    title = appContext.getString(R.string.agent_command_unknown_title, "/" + parsedCommand.name),
+                    detail = appContext.getString(R.string.agent_command_unknown_detail),
+                    commandName = null,
+                    payload = parsedCommand.raw,
+                ),
+            )
+            return
+        }
+        val prompt = when (parsedCommand) {
+            is AgentCommandInput.Text -> parsedCommand.text.trim()
+            else -> rawInput.trim()
+        }
         val pendingImages = homeState.pendingImages
         val pendingFileReferences = homeState.pendingFileReferences
         if (prompt.isBlank() && pendingImages.isEmpty() && pendingFileReferences.isEmpty()) {

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
@@ -81,10 +82,12 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.ReasoningEffort
 import androidx.compose.ui.platform.LocalContext
 import io.github.mangi.eta.ui.app.ChatDraftStore
+import io.github.mangi.eta.ui.model.AgentCommand
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
+import io.github.mangi.eta.ui.model.filterAgentCommands
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.Icon
@@ -144,6 +147,10 @@ internal fun AgentChatInputBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    /** 可用的斜杠命令；为空时输入框不弹命令面板。 */
+    commands: List<AgentCommand> = emptyList(),
+    /** 命令执行后由业务状态递增，用来清掉本地输入框里的命令原文。 */
+    inputResetToken: Long = 0,
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -151,6 +158,12 @@ internal fun AgentChatInputBar(
     val textFieldState = rememberTextFieldState(
         initialText = input.ifEmpty { draftKey?.let(AgentInputDrafts::get).orEmpty() },
     )
+    // 命令面板只看本地输入：把每个字符推回业务状态会拖着聊天舞台重组，这里用派生状态解耦。
+    LaunchedEffect(inputResetToken) {
+        if (inputResetToken > 0) textFieldState.clearText()
+    }
+    val typedText by remember { derivedStateOf { textFieldState.text.toString() } }
+    val commandMatches = remember(typedText, commands) { filterAgentCommands(typedText, commands) }
     // 内存百分比从顶栏搬到这里：顶栏太挤，输入框右上角更顺手，点开就是内存面板。
     val memoryContext = LocalContext.current
     var memoryUsage by remember { mutableStateOf(readMemoryUsage(memoryContext)) }
@@ -271,6 +284,31 @@ internal fun AgentChatInputBar(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 // 与输入框内正文同一起点（容器 10dp + 文本 8dp）。
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = commandMatches.isNotEmpty(),
+            enter = fadeIn(tween(140)) + expandVertically(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(140)),
+        ) {
+            AgentCommandPalette(
+                matches = commandMatches.take(6),
+                onPick = { command ->
+                    if (command.argHint == null) {
+                        // 无参数命令：点了直接执行，省一次回车。
+                        onSubmit("/" + command.name)
+                        textFieldState.clearText()
+                    } else {
+                        // 有参数命令：补全命令名，光标落到参数位。
+                        val filled = "/" + command.name + " "
+                        textFieldState.edit {
+                            replace(0, length, filled)
+                            selection = TextRange(filled.length)
+                        }
+                    }
+                },
+                modifier = Modifier.padding(bottom = 8.dp),
             )
         }
 
