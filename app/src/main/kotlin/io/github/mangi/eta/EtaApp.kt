@@ -18,6 +18,7 @@ import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
+import io.github.mangi.eta.agent.github.GitHubAccountManager
 import io.github.mangi.eta.data.repository.McpServerRepository
 import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
 import io.github.mangi.eta.data.repository.ProviderRepository
@@ -74,6 +75,7 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
         AgentMemoryRepository.init(this)
         ProviderRepository.init(this)
         McpServerRepository.init(this)
+        GitHubAccountManager.init(this)
         // 悬浮胶囊常驻：上次开着就继续挂上，没有任务时显示空闲。
         applicationScope.launch(Dispatchers.IO) {
             val pinned = runCatching { SettingsDataStore.settings().overlayCapsulePinned }.getOrDefault(false)

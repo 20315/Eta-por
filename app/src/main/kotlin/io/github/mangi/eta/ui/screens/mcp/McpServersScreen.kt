@@ -3,9 +3,13 @@ package io.github.mangi.eta.ui.screens.mcp
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -239,6 +243,7 @@ internal fun McpServerDetailScreen(
     val server = servers.firstOrNull { it.id == serverId }
     var working by remember { mutableStateOf(false) }
     var pendingRiskyTool by remember { mutableStateOf<McpToolDefinition?>(null) }
+    var pendingBulk by remember { mutableStateOf<PendingBulk?>(null) }
     var showDelete by remember { mutableStateOf(false) }
     var showToken by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
@@ -308,6 +313,68 @@ internal fun McpServerDetailScreen(
                 )
             }
         }
+        item(key = "tool-actions") {
+            val current = server
+            if (current.tools.isNotEmpty()) {
+                fun enable(names: Set<String>) {
+                    val toAdd = names.filter { it !in current.enabledToolNames }.toSet()
+                    if (toAdd.isEmpty()) return
+                    val risky = current.tools.filter { it.name in toAdd && it.readOnlyHint != true }
+                    if (risky.isEmpty()) {
+                        scope.launch(Dispatchers.IO) {
+                            McpServerRepository.setToolsEnabled(serverId, toAdd, true)
+                        }
+                    } else {
+                        pendingBulk = PendingBulk(toAdd, risky)
+                    }
+                }
+
+                val readOnly = current.tools.filter { it.readOnlyHint == true }.map { it.name }.toSet()
+                val writable = current.tools.map { it.name }.toSet() - readOnly
+                EtaPreferenceGroupTitle("快捷勾选")
+                Column(modifier = Modifier.padding(horizontal = EtaPreferenceDefaults.SidePadding)) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        EtaTextButton(text = "全选只读（${readOnly.size}）", onClick = { enable(readOnly) })
+                        EtaTextButton(
+                            text = "清空",
+                            onClick = {
+                                scope.launch(Dispatchers.IO) {
+                                    McpServerRepository.setToolsEnabled(
+                                        serverId,
+                                        current.tools.map { it.name },
+                                        false,
+                                    )
+                                }
+                            },
+                        )
+                        if (isGitHubServer(current)) {
+                            EtaTextButton(
+                                text = "GitHub 常用预设",
+                                onClick = { enable(githubPresetNames(current.tools)) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        toolGroups(current.tools).forEach { group ->
+                            EtaTextButton(
+                                text = "${group.label}（${group.names.size}）",
+                                onClick = { enable(group.names) },
+                            )
+                        }
+                        if (writable.isNotEmpty()) {
+                            EtaTextButton(text = "可写（${writable.size}）", onClick = { enable(writable) })
+                        }
+                    }
+                }
+            }
+        }
         item(key = "tools") {
             EtaPreferenceGroupTitle(stringResource(R.string.mcp_tools_count, server.tools.size))
             EtaPreferenceGroup {
@@ -370,6 +437,31 @@ internal fun McpServerDetailScreen(
                         McpServerRepository.setToolEnabled(serverId, tool.name, true)
                     }
                     pendingRiskyTool = null
+                },
+            )
+        }
+    }
+
+    pendingBulk?.let { bulk ->
+        EtaWindowDialog(
+            show = true,
+            title = "开启 ${bulk.names.size} 个工具",
+            summary = buildString {
+                append("其中 ${bulk.risky.size} 个可以修改数据：")
+                append(bulk.risky.take(6).joinToString("、") { it.name })
+                if (bulk.risky.size > 6) append(" 等")
+            },
+            onDismissRequest = { pendingBulk = null },
+        ) {
+            MiuixDialogActions(
+                confirmText = "确认开启",
+                destructive = true,
+                onCancel = { pendingBulk = null },
+                onConfirm = {
+                    scope.launch(Dispatchers.IO) {
+                        McpServerRepository.setToolsEnabled(serverId, bulk.names, true)
+                    }
+                    pendingBulk = null
                 },
             )
         }
@@ -441,3 +533,43 @@ private fun toolSummary(tool: McpToolDefinition): String = when {
     tool.readOnlyHint == true -> tool.description.ifBlank { stringResource(R.string.mcp_read_only_tool) }
     else -> tool.description.ifBlank { stringResource(R.string.mcp_may_modify_data) }
 }
+
+/** 批量勾选的中转状态：先确认，再一次性写入。 */
+private data class PendingBulk(val names: Set<String>, val risky: List<McpToolDefinition>)
+
+private data class ToolGroupSpec(val label: String, val names: Set<String>)
+
+/** 按名字前缀把工具归类，给「一键勾选」用。 */
+private fun toolGroups(tools: List<McpToolDefinition>): List<ToolGroupSpec> {
+    fun match(vararg keys: String) = tools
+        .filter { tool -> keys.any { tool.name.contains(it) } }
+        .map { it.name }
+        .toSet()
+    return listOf(
+        ToolGroupSpec("Issue", match("issue")),
+        ToolGroupSpec("PR", match("pull_request")),
+        ToolGroupSpec("仓库与文件", match("repo", "file", "branch", "commit", "gist")),
+        ToolGroupSpec("Actions", match("workflow", "actions", "check")),
+        ToolGroupSpec("搜索", match("search")),
+    ).filter { it.names.isNotEmpty() }
+}
+
+/** GitHub 预设里额外开启的写操作；删除类一律不碰。 */
+private val GITHUB_PRESET_WRITES = setOf(
+    "issue_write",
+    "add_issue_comment",
+    "create_pull_request",
+    "merge_pull_request",
+    "create_branch",
+    "create_or_update_file",
+    "push_files",
+    "create_repository",
+)
+
+private fun githubPresetNames(tools: List<McpToolDefinition>): Set<String> = tools
+    .filter { it.readOnlyHint == true || it.name in GITHUB_PRESET_WRITES }
+    .map { it.name }
+    .toSet()
+
+private fun isGitHubServer(server: McpServerSetting): Boolean =
+    server.url.contains("githubcopilot", ignoreCase = true)

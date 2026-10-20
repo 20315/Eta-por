@@ -511,6 +511,19 @@ private fun SettingsPageContent(
 
                     EtaPreferenceDivider()
                     EtaArrowPreference(
+                        title = "GitHub 账号",
+                        summary = "一键连接，之后可直接 clone/push、提 issue/PR",
+                        startAction = {
+                            EtaPreferenceIcon(
+                                icon = Icons.Rounded.Code,
+                                tint = EtaPreferenceColors.Blue,
+                            )
+                        },
+                        onClick = { onNavigate(AppRoute.GitHubAccount) },
+                    )
+
+                    EtaPreferenceDivider()
+                    EtaArrowPreference(
                         title = "角色",
                         startAction = {
                             EtaPreferenceIcon(
