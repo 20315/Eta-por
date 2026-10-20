@@ -2,8 +2,10 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -39,10 +41,11 @@ private val TopBarCapsuleReserve = 216.dp
 private val TopBarCapsuleFloor = 56.dp
 
 /** 各胶囊的估算占位；估偏大只会让胶囊早一点变短标。 */
-private val FullMemoryCapsuleWidth = 76.dp
-private val CompactMemoryCapsuleWidth = 40.dp
 private val FullProfileCapsuleWidth = 100.dp
-private val CompactProfileCapsuleWidth = 56.dp
+private val CompactProfileCapsuleWidth = 100.dp
+
+/** 顶栏所有胶囊统一高度：模式开关放得下图标，内存数字也不会挤成一条。 */
+private val StatusCapsuleHeight = 33.dp
 private val CapsuleSpacing = 4.dp
 
 /**
@@ -50,8 +53,6 @@ private val CapsuleSpacing = 4.dp
  * 内存是只读诊断信息，宽度不够时先变短标、再整枚收起。
  */
 private val ProfileFullBudget = FullProfileCapsuleWidth
-private val MemoryWithProfileBudget = FullProfileCapsuleWidth + CompactMemoryCapsuleWidth + CapsuleSpacing
-private val MemoryFullBudget = FullProfileCapsuleWidth + FullMemoryCapsuleWidth + CapsuleSpacing
 
 @Composable
 internal fun ConversationStatusCapsules(
@@ -63,26 +64,31 @@ internal fun ConversationStatusCapsules(
         val budget = minOf(maxWidth, (screenWidth - TopBarCapsuleReserve).coerceAtLeast(TopBarCapsuleFloor))
         val showProfile = budget >= CompactProfileCapsuleWidth
         val profileFull = budget >= ProfileFullBudget
-        val showMemory = budget >= MemoryWithProfileBudget
-        val memoryFull = budget >= MemoryFullBudget
         Row(
             horizontalArrangement = Arrangement.spacedBy(CapsuleSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 工具档写在前面：Row 按声明顺序分配剩余宽度，放前面才能保住它不被内存挤掉。
+            // 内存百分比搬到输入框右上角了，顶栏这里只留模式开关。
             if (showProfile) LocalProfileTopBarCapsule(model, compact = !profileFull)
-            if (showMemory) MemoryUsageCapsule(compact = !memoryFull)
         }
     }
 }
 
 @Composable
 internal fun StatusCapsule(text: String, modifier: Modifier, description: String = text) {
-    Text(text,
-        modifier = modifier.background(MiuixTheme.colorScheme.surfaceContainer, CircleShape)
-            .semantics { contentDescription = description }.padding(horizontal = 8.dp, vertical = 5.dp),
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        style = MiuixTheme.textStyles.footnote1, fontSize = 11.sp,
-        maxLines = 1, overflow = TextOverflow.Ellipsis,
-    )
+    Box(
+        modifier = modifier
+            .height(StatusCapsuleHeight)
+            .background(MiuixTheme.colorScheme.surfaceContainer, CircleShape)
+            .semantics { contentDescription = description }
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.footnote1, fontSize = 11.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

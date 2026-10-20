@@ -15,11 +15,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.basic.DropdownImpl
-import top.yukonga.miuix.kmp.basic.DropdownItem
-import top.yukonga.miuix.kmp.basic.ListPopupColumn
-import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.window.WindowListPopup
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -49,49 +44,21 @@ internal fun MemoryUsageCapsule(compact: Boolean = false) {
             modifier = Modifier.clickable { showMenu = true },
             description = stringResource(R.string.memory_capsule_description, usage.usedPercent),
         )
-        WindowListPopup(
-            show = showMenu,
-            alignment = PopupPositionProvider.Align.End,
-            onDismissRequest = { showMenu = false },
-        ) {
-            val items = listOf(
-                DropdownItem(
-                    text = stringResource(
-                        R.string.memory_capsule_used,
-                        formatGigabytes(usage.usedBytes),
-                        formatGigabytes(usage.totalBytes),
-                    ),
-                ),
-                DropdownItem(
-                    text = stringResource(
-                        R.string.memory_capsule_available,
-                        formatGigabytes(usage.availableBytes),
-                    ),
-                ),
-            )
-            ListPopupColumn {
-                items.forEachIndexed { index, item ->
-                    DropdownImpl(
-                        item = item,
-                        optionSize = items.size,
-                        isSelected = false,
-                        index = index,
-                        onSelectedIndexChange = { showMenu = false },
-                    )
-                }
-            }
-        }
+        MemoryUsageSheet(show = showMenu, onDismiss = { showMenu = false })
     }
 }
 
-private data class MemoryUsage(
+internal data class MemoryUsage(
     val usedPercent: Int,
     val usedBytes: Long,
     val availableBytes: Long,
     val totalBytes: Long,
+    /** 内存拓展（ZRAM/Swap）。系统设置页把它算进"总计"，我们只作参考展示。 */
+    val swapTotalBytes: Long = 0L,
+    val swapUsedBytes: Long = 0L,
 )
 
-private fun readMemoryUsage(context: Context): MemoryUsage {
+internal fun readMemoryUsage(context: Context): MemoryUsage {
     val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     val info = ActivityManager.MemoryInfo()
     runCatching { manager?.getMemoryInfo(info) }
@@ -99,10 +66,32 @@ private fun readMemoryUsage(context: Context): MemoryUsage {
     val available = info.availMem.coerceAtLeast(0L)
     val used = (total - available).coerceAtLeast(0L)
     val percent = ((used.toDouble() / total.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
-    return MemoryUsage(percent, used, available, total)
+    val (swapTotal, swapUsed) = readSwapBytes()
+    return MemoryUsage(percent, used, available, total, swapTotal, swapUsed)
 }
 
-private fun formatGigabytes(bytes: Long): String =
+/**
+ * 内存拓展（ZRAM）：系统设置里的「运行内存」把它和物理内存加在一起算总量，
+ * 所以那边显示"总计 16.0 + 12.0 GB、可用 17.5 GB"。这里只做展示，不参与百分比。
+ */
+private fun readSwapBytes(): Pair<Long, Long> = runCatching {
+    var total = 0L
+    var free = 0L
+    java.io.File("/proc/meminfo").useLines { lines ->
+        lines.forEach { line ->
+            when {
+                line.startsWith("SwapTotal:") -> total = line.filter { it.isDigit() }.toLongOrNull() ?: 0L
+                line.startsWith("SwapFree:") -> free = line.filter { it.isDigit() }.toLongOrNull() ?: 0L
+            }
+        }
+    }
+    total * 1024L to (total - free).coerceAtLeast(0L) * 1024L
+}.getOrDefault(0L to 0L)
+
+internal fun formatGigabytes(bytes: Long): String =
     String.format(Locale.US, "%.1f GB", bytes.toDouble() / (1024.0 * 1024.0 * 1024.0))
+
+internal fun formatMegabytes(bytes: Long): String =
+    String.format(Locale.US, "%.0f MB", bytes.toDouble() / (1024.0 * 1024.0))
 
 private const val MEMORY_REFRESH_MILLIS = 5000L

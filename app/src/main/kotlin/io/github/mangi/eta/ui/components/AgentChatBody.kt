@@ -4,10 +4,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -182,6 +184,7 @@ internal fun AgentChatBody(
     onDismissInterruptedRun: () -> Unit = {},
     /** 会话框上方的下拉小白条：上滑呼出会话导航。 */
     onOpenNavigator: () -> Unit = {},
+    /** 斜杠命令与命令确认卡。 */
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberLazyListState()
@@ -1082,6 +1085,7 @@ private fun AgentChatBottomBar(
                 .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         ) {
+            LocalProfileSwitchToast(modifier = Modifier.fillMaxWidth())
             ChatNavigatorHandle(onOpen = onOpenNavigator)
             AgentChatInputBar(
                 input = input,

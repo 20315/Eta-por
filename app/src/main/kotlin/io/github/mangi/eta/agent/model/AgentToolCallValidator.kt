@@ -22,7 +22,8 @@ internal class AgentToolCallValidator(tools: JSONArray) {
 
     fun validate(call: AgentModelClient.ToolCall): String? {
         val toolSchema = schemasByName[call.name]
-            ?: return "工具未在本次运行的能力目录中声明"
+            ?: return "工具「${call.name}」不在本次运行的工具目录里：当前工具档可能没有开放它（例如精简档不带技能与任务工具），" +
+                "请如实告诉用户需要把顶栏「工具档」切到「全部工具」，不要换成别的工具硬凑"
         val arguments = runCatching { JSONObject(call.argumentsJson.ifBlank { "{}" }) }
             .getOrElse { return "参数不是有效的 JSON object" }
         return validateValue(

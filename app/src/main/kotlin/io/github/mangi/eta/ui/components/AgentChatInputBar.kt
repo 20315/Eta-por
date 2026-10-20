@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -150,6 +151,16 @@ internal fun AgentChatInputBar(
     val textFieldState = rememberTextFieldState(
         initialText = input.ifEmpty { draftKey?.let(AgentInputDrafts::get).orEmpty() },
     )
+    // 内存百分比从顶栏搬到这里：顶栏太挤，输入框右上角更顺手，点开就是内存面板。
+    val memoryContext = LocalContext.current
+    var memoryUsage by remember { mutableStateOf(readMemoryUsage(memoryContext)) }
+    var showMemorySheet by remember { mutableStateOf(false) }
+    LaunchedEffect(memoryContext) {
+        while (true) {
+            memoryUsage = readMemoryUsage(memoryContext)
+            kotlinx.coroutines.delay(5_000)
+        }
+    }
     val draftContext = LocalContext.current
     if (draftKey != null) {
         // 只记录到草稿仓库，不把每个字符推回业务状态，聊天舞台不会被拖着重组成。
@@ -292,6 +303,23 @@ internal fun AgentChatInputBar(
                     )
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 8.dp, end = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.memory_inline_label, memoryUsage.usedPercent),
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier
+                            .clickable { showMemorySheet = true }
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+                MemoryUsageSheet(show = showMemorySheet, onDismiss = { showMemorySheet = false })
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -23,10 +23,13 @@ internal object AgentToolCatalog {
             val keepAll = localProfile == LocalToolProfile.LIGHT || localProfile == LocalToolProfile.FULL
             val minimal = localProfile == LocalToolProfile.MINIMAL
             val dev = localProfile == LocalToolProfile.DEV
+            // 精简档：手机助手砍掉设备操作与浏览器等于砍掉主要用途，所以这两组照发，
+            // 只砍管理类的技能发现与任务，再靠描述压缩省 token。
+            val lean = localProfile == LocalToolProfile.STANDARD
             AgentContextAppToolCatalog.appendTo(tools)
             if (!minimal) AgentGestureToolCatalog.appendTo(tools)
             if (!minimal) AgentTextSystemToolCatalog.appendTo(tools)
-            if (keepAll) {
+            if (keepAll || lean) {
                 AgentDeviceToolCatalog.appendTo(
                     tools,
                     directTools = deviceDirectTools,
@@ -44,7 +47,7 @@ internal object AgentToolCatalog {
             }
             if (browserTools) {
                 AgentWebToolCatalog.appendTo(tools, includeSearch = localWebSearch)
-                if (keepAll) AgentBrowserToolCatalog.appendTo(tools)
+                if (keepAll || lean) AgentBrowserToolCatalog.appendTo(tools)
             }
             if (keepAll) {
                 AgentSkillToolCatalog.appendTo(
@@ -56,7 +59,7 @@ internal object AgentToolCatalog {
             }
             if (memoryTools && !minimal) AgentMemoryToolCatalog.appendTo(tools, writable = memoryWritable)
             if (memoryWritable && keepAll) AgentTaskToolCatalog.appendTo(tools)
-            if (deviceDirectTools && (keepAll || dev)) AgentVirtualScreenToolCatalog.appendTo(tools)
+            if (deviceDirectTools && (keepAll || dev || lean)) AgentVirtualScreenToolCatalog.appendTo(tools)
             if (terminalTools) {
                 AgentFileVisionToolCatalog.appendTo(tools)
                 AgentTerminalToolCatalog.appendTo(tools)
