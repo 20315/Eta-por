@@ -144,6 +144,12 @@ internal object AgentModelClient {
         val systemCount = AgentPromptBuilder.buildSystemMessages(
             config, skillContext, memoryContext, initialCapabilities.rootAvailable, roleplayContext, executionContext, initialCapabilities.virtualScreenEnabled, initialCapabilities.virtualScreenFallbackEnabled,
         ).length()
+        // MCP 工具只在 run 开始时压一次：每轮重复解析这 190KB JSON 纯属浪费。
+        val compactedAdditionalTools = if (additionalTools.length() == 0) {
+            additionalTools
+        } else {
+            JSONArray(additionalTools.toString()).also { AgentToolSchemaCompactor.compactMcp(it) }
+        }
         fun toolsFor(capabilities: AgentToolCapabilities): JSONArray {
             if (rewriteReply) return JSONArray()
             val activeProfile = activeProfileOverride ?: LocalToolProfileStore.current(config.providerId, config.model)
@@ -163,8 +169,8 @@ internal object AgentModelClient {
                 localWebSearch = !config.usesHostedWebSearch,
                 localProfile = activeProfile,
             )
-            for (index in 0 until additionalTools.length()) {
-                tools.put(additionalTools.opt(index))
+            for (index in 0 until compactedAdditionalTools.length()) {
+                tools.put(compactedAdditionalTools.opt(index))
             }
             return if (restrictedToolNames == null) tools else JSONArray().also { filtered ->
                 for (index in 0 until tools.length()) {
