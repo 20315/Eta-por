@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
@@ -49,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,6 +75,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -176,6 +180,8 @@ internal fun AgentChatBody(
     resumableRun: ResumableRunUiState? = null,
     onResumeInterruptedRun: () -> Unit = {},
     onDismissInterruptedRun: () -> Unit = {},
+    /** 会话框上方的下拉小白条：上滑呼出会话导航。 */
+    onOpenNavigator: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberLazyListState()
@@ -290,6 +296,7 @@ internal fun AgentChatBody(
             resumableRun = resumableRun,
             onResumeInterruptedRun = onResumeInterruptedRun,
             onDismissInterruptedRun = onDismissInterruptedRun,
+            onOpenNavigator = onOpenNavigator,
             modifier = modifier,
         )
     }
@@ -344,6 +351,7 @@ private fun AgentChatScaffold(
     resumableRun: ResumableRunUiState? = null,
     onResumeInterruptedRun: () -> Unit = {},
     onDismissInterruptedRun: () -> Unit = {},
+    onOpenNavigator: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
@@ -394,6 +402,7 @@ private fun AgentChatScaffold(
                 onAttachFilePath = onAttachFilePath,
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
+                onOpenNavigator = onOpenNavigator,
             )
         },
     ) { innerPadding ->
@@ -1013,6 +1022,7 @@ private fun AgentChatBottomBar(
     onAttachFilePath: (String) -> Unit,
     onRemoveFileReference: (String) -> Unit,
     onCancelMessageEdit: () -> Unit,
+    onOpenNavigator: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1072,6 +1082,7 @@ private fun AgentChatBottomBar(
                 .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         ) {
+            ChatNavigatorHandle(onOpen = onOpenNavigator)
             AgentChatInputBar(
                 input = input,
                 draftKey = draftKey,
@@ -1288,3 +1299,55 @@ private data class SuggestionItem(
     val icon: ImageVector,
     val prompt: String,
 )
+
+/**
+ * 会话框上方的小白条：上滑（或轻点）呼出会话导航。
+ *
+ * 顶栏已经有历史、新建、模型、⋯ 一排入口，再塞一个只会更挤；
+ * 长会话里往回翻的动作天然发生在输入框附近，所以把入口挪到这里。
+ */
+@Composable
+private fun ChatNavigatorHandle(onOpen: () -> Unit) {
+    val density = LocalDensity.current
+    val triggerPx = with(density) { 16.dp.toPx() }
+    var upwardDrag by remember { mutableFloatStateOf(0f) }
+    // 外面这层只负责把热区摆到中间，本身不吃手势：只有小白条周围那一小块能滑能点，
+    // 否则整行都会变成隐形按钮，误触概率太高。
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(44.dp)
+                .height(14.dp)
+                .clickable(onClick = onOpen)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { upwardDrag = 0f },
+                        onDragCancel = { upwardDrag = 0f },
+                        onDragEnd = {
+                            // 只认「往上」的位移，往下拖当作误触直接丢弃。
+                            if (upwardDrag <= -triggerPx) onOpen()
+                            upwardDrag = 0f
+                        },
+                    ) { _, dragAmount ->
+                        upwardDrag = (upwardDrag + dragAmount).coerceAtMost(0f)
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(4.dp)
+                    .background(
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.36f),
+                        shape = RoundedCornerShape(2.dp),
+                    ),
+            )
+        }
+    }
+}

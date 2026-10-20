@@ -170,6 +170,15 @@
   <string name="appearance_interface_scale_input_label">百分比</string>
   <string name="conversation_unnamed">新对话</string>
   <string name="conversation_search_hint">搜索对话</string>
+  <string name="conversation_navigator_title">会话导航</string>
+  <string name="conversation_navigator_search_hint">搜索本会话</string>
+  <string name="conversation_navigator_empty">这个会话还没有可跳转的内容</string>
+  <string name="conversation_navigator_no_match">没有匹配「%1$s」的消息</string>
+  <string name="conversation_navigator_jump_latest">跳到最新</string>
+  <string name="conversation_navigator_blank">空消息</string>
+  <string name="conversation_navigator_you">你</string>
+  <string name="conversation_navigator_assistant">Eta</string>
+  <string name="conversation_navigator_system">系统</string>
   <string name="conversation_empty">还没有对话</string>
   <string name="conversation_no_results">没有匹配的对话</string>
   <string name="conversation_rename_title">重命名对话</string>

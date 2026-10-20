@@ -56,6 +56,7 @@ import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.ConversationModeUi
+import io.github.mangi.eta.ui.model.ConversationNavEntry
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import io.github.mangi.eta.ui.model.MessageEditUiState
@@ -70,6 +71,7 @@ import io.github.mangi.eta.ui.model.contentMatches
 import io.github.mangi.eta.ui.model.SearchJumpUiState
 import io.github.mangi.eta.ui.model.ResumableRunUiState
 import io.github.mangi.eta.ui.model.firstMatchMessageId
+import io.github.mangi.eta.ui.model.navEntries
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
@@ -777,6 +779,17 @@ internal class AgentAppState(
     fun consumeSearchJump() {
         if (homeState.searchJump != null) homeState = homeState.copy(searchJump = null)
     }
+
+    /** 会话导航：跳到当前会话里的指定消息，走的是搜索命中同一条滚动+高亮通道。 */
+    fun jumpToMessage(messageId: String) {
+        if (homeState.messages.none { message -> message.id == messageId }) return
+        searchJumpToken += 1
+        homeState = homeState.copy(searchJump = SearchJumpUiState(messageId, searchJumpToken))
+    }
+
+    /** 会话导航面板的条目：空查询给目录，有关键词给命中列表；notice 文案在这里注入。 */
+    fun conversationNavEntries(query: String): List<ConversationNavEntry> =
+        homeState.navEntries(query) { code -> noticeText(code) }
 
     /** 中断续跑：用一条继续指令重发，接上 checkpoint 恢复出来的半截上下文。 */
     fun resumeInterruptedRun() {

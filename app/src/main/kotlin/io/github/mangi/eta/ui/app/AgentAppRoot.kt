@@ -50,6 +50,7 @@ import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
+import io.github.mangi.eta.ui.components.ConversationNavigatorSheet
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentMemoryAction
@@ -200,6 +201,7 @@ fun AgentAppRoot(
     }
 
     var conversationPaneOpen by remember { mutableStateOf(false) }
+    var conversationNavigatorOpen by remember { mutableStateOf(false) }
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var categoryMoveTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
@@ -294,12 +296,14 @@ fun AgentAppRoot(
         focusManager.clearFocus()
         agentState.selectConversation(conversationId)
         conversationPaneOpen = false
+        conversationNavigatorOpen = false
     }
 
     fun createConversation() {
         focusManager.clearFocus()
         agentState.createConversation()
         conversationPaneOpen = false
+        conversationNavigatorOpen = false
     }
 
     fun openAccessibilitySettings() {
@@ -459,6 +463,7 @@ fun AgentAppRoot(
                                 is AgentHomeAction.EditMessage -> agentState.beginMessageEdit(action.id)
                                 AgentHomeAction.CancelMessageEdit -> agentState.cancelMessageEdit()
                                 AgentHomeAction.SearchJumpConsumed -> agentState.consumeSearchJump()
+                                AgentHomeAction.OpenConversationNavigator -> conversationNavigatorOpen = true
                                 AgentHomeAction.ResumeInterruptedRun -> agentState.resumeInterruptedRun()
                                 AgentHomeAction.DismissInterruptedRun -> agentState.dismissInterruptedRun()
                                 is AgentHomeAction.DeleteMessage -> {
@@ -485,6 +490,17 @@ fun AgentAppRoot(
                             }
                         },
                         isDrawerOpen = conversationPaneOpen,
+                    )
+                    ConversationNavigatorSheet(
+                        show = conversationNavigatorOpen,
+                        messagesKey = agentState.homeState.messages,
+                        latestMessageId = agentState.homeState.messages.lastOrNull()?.id,
+                        onDismiss = { conversationNavigatorOpen = false },
+                        onJump = { messageId ->
+                            conversationNavigatorOpen = false
+                            agentState.jumpToMessage(messageId)
+                        },
+                        entriesFor = { query -> agentState.conversationNavEntries(query) },
                     )
                 }
             }
