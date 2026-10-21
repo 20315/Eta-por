@@ -73,6 +73,18 @@ Runtime 独立于 Provider 自定义提示词注入 Eta 身份，以“当前配
 
 OpenAI-compatible Provider 可在配置页选择 `Chat Completions` 或 `Responses API`。新安装和重置后的内置 OpenAI 默认使用 Responses；数据库中已有 Provider 不会被默认值覆盖。自定义 Provider 和其他内置 Provider 默认仍使用 Chat Completions。
 
+Provider 的认证方式与模型协议分别保存。API Key 保留既有兼容路径；Codex 和 Grok 订阅使用显式连接配置，固定官方地址与协议。OpenAI 使用 Codex 公共客户端的 PKCE 授权，回调监听 `127.0.0.1:1455/auth/callback`；xAI 使用设备码轮询。系统浏览器承载授权，Agent 内置 WebView 不参与账号登录。两种流程均支持取消，回调监听在结束后关闭。
+
+OAuth 凭据由主进程的 `ProviderCredentialRepository` 管理，以 Android Keystore 密钥加密后原子写入不可备份目录；Provider、RemotePreferences、IPC 和备份仅携带认证方式及稳定 Provider 标识，不携带 OAuth token。外部入口的 OAuth 配置在 Runtime 内按本地 Provider 和模型重建，不能指定凭据的目标地址。复制使用新 Provider 标识；删除、重置和切换认证方式清除旧凭据。备份先将导入的订阅连接以停用、无凭据的方式提交，成功清理旧授权后再恢复认证方式及启用状态；提交前失败不触碰原凭据，提交后清理失败明确报告部分成功并保持连接停用，恢复后需要重新登录。
+
+模型推理和远端目录请求在发送前获取有效凭据；同账号并发刷新只执行一次，刷新结果整体保存，登录与注销代次防止迟到结果覆盖当前会话。临时网络错误保留凭据，确定失效后要求重新登录。HTTP 401 仅在响应流消费前允许刷新一次；此恢复不重放模型流或工具。订阅请求禁止重定向，认证及模型路由 Header 不能被自定义请求头覆盖。Codex 退出登录清除本机令牌；Grok 同时尝试撤销远端授权。
+
+Codex 复用 Responses 编解码，使用扁平函数工具、`store: false` 与流式响应，并在后续轮次回传加密推理项。请求发送至 `https://chatgpt.com/backend-api/codex/responses`，工作区 Header 与 Bearer 从同一份令牌获取；刷新后不接受工作区变化。不支持的自定义参数在请求前明确拒绝。Grok 使用订阅代理的 Chat Completions 流。授权说明参见 [Codex 账号认证](https://developers.openai.com/codex/auth/)与 [xAI 身份认证](https://docs.x.ai/build/enterprise)。
+
+OpenAI 初始预设仅包含 GPT-6.1 Sol、GPT-6 Luna 和 GPT-6 Astra，用于尚未同步的连接。Codex 从 `/backend-api/codex/models` 拉取账号目录，查询参数 `client_version` 使用 Eta 的发行版本；解析远端 `slug`、`display_name`、可见性、输入模态、上下文窗口和推理档位，不用公共 API 预设补齐或筛选账号模型。Grok 从订阅代理拉取目录。登录成功后自动同步完整账号目录，模型页手动刷新使用同一路径；成功同步后以远端结果为准，失败保留已有配置。模型列表与默认选择由持久化配置驱动，登录状态不隐藏模型或切换到其他连接；未登录、凭据失效及额度不足在请求时报告。
+
+目录结果携带连接配置快照和非敏感的登录代次，读取结束及同步提交前均校验，模型页离开时取消读取。同步时匹配模型保留本地 ID 和用户覆盖值，自动模型标记为远端来源，并清理远端已移除的自动模型；手动配置保留。预设更新只清理旧预设并补入尚未同步连接的新预设，不覆盖远端模型，也不在保存空连接时重新填充。Grok 目录按实际推理标识、隐藏字段与明确声明的推理档位解释，不接受其中的地址或凭据覆盖；仅列入当前订阅连接采用的 Chat Completions 路由，全部可见模型声明其他协议时明确报错，不把协议不兼容当作空目录。
+
 提供商目录从固定的 `models.dev/api.json` 读取公开元数据，应用内另有随 APK 打包的压缩快照；在线目录通过大小限制、协议和 HTTPS 地址校验后原子缓存，读取失败时使用缓存或快照。目录只列出 Eta 可按 Chat Completions 接入且具有文本输出与工具调用能力的候选模型；读取目录不发送已保存的 API Key。用户选择模型并核对完整 Base URL 后，导入为默认停用、无 API Key 的自定义提供商；后续密钥由用户为该地址填写，已保存的模型和当前选择不随目录刷新改写。
 
 Chat Completions 在协议边界把当前上下文中的全部 `system` 内容按原顺序合并为首条唯一系统消息，兼容要求系统消息只能位于开头的模型 Chat Template。Responses 则把完整的 `system`/`developer` 上下文投影到 `instructions`，并将持久历史重建为带 `type: "message"` 的 input Items。
@@ -82,6 +94,8 @@ Chat Completions 流式工具调用按 `index` 聚合，后续空 ID 不覆盖�
 Responses 请求固定使用 `stream:true`、`store:false`，不发送 `previous_response_id`。Runtime 在同一次 run 的工具回合之间精确回放 Provider 返回的完整 output Items；因此 encrypted reasoning、服务端工具状态等 opaque 数据只存在于内存，不进入 IPC transcript、Room、日志或运行归档。持久会话只保留规范化回答、可见推理内容和 Eta 工具记录，后续 run 由这些稳定数据重新构建上下文。
 
 兼容接口若在 `response.completed` 中省略 `output` 或返回空数组，Runtime 只使用同一 SSE 流中已经收到的标准文本、推理摘要和函数调用增量完成当前轮次；非空终态始终是权威结果，且本地恢复结果不会冒充 Provider 的 opaque output Items。
+
+OpenAI 请求按当前模型能力配置编码思考档位，不另行维护请求层的型号白名单；Codex 使用账号目录提供的档位，服务端拒绝会如实返回。
 
 推理界面展示 Provider 返回的可见推理内容，不由 Eta 生成或补写。Responses 支持 `reasoning_summary_text.delta` 和 `reasoning_text.delta`；终态读取 reasoning item 的 `summary[]` 与 `content[].reasoning_text`，并兼容旧接口的单字段 `reasoning_text`。标准内容与旧字段同时存在时不重复追加，终态仍按 item 和内容块身份校准流式结果。Responses 只对精确命中官方目录且未被远端显式标记为 `reasoning:false` 的模型补齐推理能力，不会因 Endpoint 类型而假定所有模型支持推理。
 
@@ -292,7 +306,7 @@ App 按上次成功提交的内容比较会话变更，只更新变化的元数�
 
 ### 上下文摘要
 
-模型窗口只采用设置中保存的值。从远端拉取模型时，若接口标注了窗口且该模型尚未填写，拉取会把标注值写入保存的窗口，用户可再修改；已填写的值不被覆盖，接口未标注则保持空。官方目录不参与运行窗口解析，运行时也不自动补齐缺失配置。未填写窗口时照常对话，只关闭自动压缩；手动压缩仍可用，服务商返回上下文溢出时按 `CONTEXT_OVERFLOW` 报告。记忆、世界书等按窗口比例分配的注入预算在窗口未知时以 128K 为基准。
+模型窗口只采用设置中保存的值。OpenAI 的三个初始预设将官方窗口写入配置，已有预设的空窗口在目录升级时补齐，已配置值保留；升级不新增已删除模型，也不在后续读取时恢复用户清空的窗口。Codex 同步时使用账号目录的窗口替换公共 API 的预填窗口，用户另行设置的窗口保留。从远端拉取模型时，若接口标注了窗口且该模型尚未填写，拉取会把标注值写入保存的窗口，用户可再修改；已填写的值不被覆盖，接口未标注则保持空。官方目录不参与运行窗口解析，运行时也不自动补齐缺失配置。未填写窗口时照常对话，只关闭自动压缩；手动压缩仍可用，服务商返回上下文溢出时按 `CONTEXT_OVERFLOW` 报告。记忆、世界书等按窗口比例分配的注入预算在窗口未知时以 128K 为基准。
 
 设置中的“上下文与扩展”提供“自动压缩上下文”开关，默认开启；配置保存在 App 本地，不依赖 Xposed，聊天与系统助手入口共用，从下一次运行生效。关闭后保留手动压缩。Runtime 会核对本地设置，入口请求不能重新开启已关闭的自动压缩。
 

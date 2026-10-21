@@ -97,6 +97,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
@@ -130,6 +132,9 @@ internal class AgentAppState(
     private var persistencePaused = false
     private val runtimeRecoveryInProgress = AtomicBoolean(false)
     private val defaultThinkingEnabled = agentBooleanForUi(Prefs.Keys.AGENT_THINKING_ENABLED)
+    /** 导入备份期间串行化会话加载，避免与保存/重载交叉。 */
+    private val conversationLoadMutex = Mutex()
+
     @Volatile
     private var conversationPersistence = AgentConversationPersistence(initialConversations)
     private var currentReasoningCapabilities: ModelReasoningCapabilities? = null
@@ -322,17 +327,30 @@ internal class AgentAppState(
         var reloaded = false
         try {
             pendingPersistence?.join()
-            val summary = EtaBackupRepository.import(appContext, input)
-            imported = true
-            reloadConversationsAfterBackup()
-            reloaded = true
-            return summary
+            return conversationLoadMutex.withLock {
+                try {
+                    val summary = EtaBackupRepository.import(appContext, input, onCommitted = { imported = true })
+                    reloadConversationsAfterBackup()
+                    reloaded = true
+                    summary
+                } catch (failure: Throwable) {
+                    if (imported && !reloaded) {
+                        try {
+                            withContext(NonCancellable) { reloadConversationsAfterBackup() }
+                            reloaded = true
+                        } catch (reloadFailure: Throwable) {
+                            failure.addSuppressed(reloadFailure)
+                        }
+                    }
+                    throw failure
+                }
+            }
         } finally {
             // 导入已提交但重载失败时内存仍是旧状态，继续暂停，避免覆盖导入结果；重启后按库内数据加载。
             if (!imported || reloaded) {
                 synchronized(persistenceLock) { persistencePaused = false }
             }
-            // 导入失败时数据库已回滚并与保存基线一致，补写暂停期间的会话变更。
+            // 仅提交前失败才回写旧内存；提交后的清理失败或取消仍以导入数据为准。
             if (!imported) withContext(Dispatchers.Main.immediate + NonCancellable) { persistConversations() }
         }
     }

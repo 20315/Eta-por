@@ -30,7 +30,7 @@ import androidx.room.migration.Migration
         AgentTaskRunEntity::class,
         TokenUsageRecordEntity::class,
     ],
-    version = 28,
+    version = 29,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -77,6 +77,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27,
                         MIGRATION_27_28,
+                        MIGRATION_28_29,
                     )
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) { createTextChunkCleanup(db) }
@@ -171,6 +172,10 @@ internal abstract class EtaDatabase : RoomDatabase() {
 
         internal val MIGRATION_21_22 = Migration(21, 22) { database ->
             database.execSQL("ALTER TABLE conversations ADD COLUMN model_id TEXT")
+        }
+
+        internal val MIGRATION_28_29 = Migration(28, 29) { database ->
+            database.execSQL("ALTER TABLE model_providers ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'api_key'")
         }
 
         private fun createTextChunkCleanup(database: androidx.sqlite.db.SupportSQLiteDatabase) {
