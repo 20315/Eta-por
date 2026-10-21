@@ -93,6 +93,8 @@ data class SpeechSettings(
     val speechPitch: Float = 1.0f,
     /** 熄屏后继续朗读，而不是被系统息屏打断。 */
     val speakOnScreenOff: Boolean = true,
+    /** 只控制 Eta 自身的语音输入，关闭时保留服务配置以便再次开启。 */
+    val recognitionEnabled: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_AUTO_SEND_SILENCE_MS = 2_000
