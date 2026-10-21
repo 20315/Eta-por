@@ -53,6 +53,7 @@ import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.app.AgentCommands
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
+import io.github.mangi.eta.ui.model.MessageReferenceUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -883,6 +884,59 @@ internal class AgentAppState(
         }
     }
 
+    /** 挂上一条 @ 引用：最多 3 条，重复的直接忽略。 */
+    fun attachMessageReference(reference: MessageReferenceUi) {
+        val current = homeState.pendingMessageRefs
+        if (current.any { it.messageId == reference.messageId }) return
+        if (current.size >= MessageReferenceLimit) {
+            Toast.makeText(
+                appContext,
+                appContext.getString(R.string.chat_mention_limit, MessageReferenceLimit),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        updateCurrentConversation(homeState.copy(pendingMessageRefs = current + reference))
+    }
+
+    fun removeMessageReference(messageId: String) {
+        val current = homeState.pendingMessageRefs
+        if (current.none { it.messageId == messageId }) return
+        updateCurrentConversation(
+            homeState.copy(pendingMessageRefs = current.filterNot { it.messageId == messageId }),
+        )
+    }
+
+    private fun buildMessageReferenceBlock(
+        references: List<MessageReferenceUi>,
+        messages: List<AgentChatMessageUi>,
+    ): String {
+        if (references.isEmpty()) return ""
+        val builder = StringBuilder()
+        references.forEach { reference ->
+            val text = messages.firstOrNull { it.id == reference.messageId }?.let { message ->
+                when (message) {
+                    is UserMessageUi -> message.content
+                    is AgentMessageUi -> message.content
+                    else -> null
+                }
+            }?.trim().orEmpty()
+            if (text.isEmpty()) return@forEach
+            val clipped = if (text.length <= MessageReferenceInlineLimit) {
+                text
+            } else {
+                text.take(MessageReferenceInlineLimit).trimEnd() + "…"
+            }
+            builder.append("[引用 #").append(reference.sequence)
+                .append(if (reference.fromUser) " · 我" else " · Eta")
+                .append("]「").append(clipped).append("」\n")
+        }
+        if (builder.isEmpty()) return ""
+        // 被引用内容可能已经被上下文压缩摘掉了，给模型一条回到原文的路。
+        builder.append("（引用的原文可能已被摘要，需要更多上下文时可用 conversation_history 按关键词检索）\n")
+        return builder.toString()
+    }
+
     private fun resolveModelCommand(args: String) {
         val query = args.trim()
         val models = modelPickerState.providerGroups.flatMap { it.models }
@@ -1286,10 +1340,13 @@ internal class AgentAppState(
             )
             return
         }
-        val prompt = when (parsedCommand) {
+        val typedPrompt = when (parsedCommand) {
             is AgentCommandInput.Text -> parsedCommand.text.trim()
             else -> rawInput.trim()
         }
+        // @ 引用：把被引用的历史消息以摘录形式放在正文前面，明确标出是谁说的第几条。
+        val referenceBlock = buildMessageReferenceBlock(homeState.pendingMessageRefs, homeState.messages)
+        val prompt = (referenceBlock + typedPrompt).trim()
         val pendingImages = homeState.pendingImages
         val pendingFileReferences = homeState.pendingFileReferences
         if (prompt.isBlank() && pendingImages.isEmpty() && pendingFileReferences.isEmpty()) {
@@ -1297,7 +1354,7 @@ internal class AgentAppState(
         }
         if (homeState.isStreaming) {
             // 运行中插话：走 steering 通道，在下一个 turn 注入，不取消当前模型请求或工具批次。
-            updateCurrentConversation(homeState.copy(input = ""))
+            updateCurrentConversation(homeState.copy(input = "", pendingMessageRefs = emptyList()))
             val conversationId = selectedConversationId.orEmpty()
             scope.launch(Dispatchers.IO) {
                 AgentRuntimeClient(appContext, AndroidAgentLogger)
@@ -1398,6 +1455,7 @@ internal class AgentAppState(
                 input = "",
                 pendingImages = emptyList(),
                 pendingFileReferences = emptyList(),
+                pendingMessageRefs = emptyList(),
                 messageEdit = null,
             ),
             reasoningEffort = homeState.reasoningEffort,
@@ -2461,3 +2519,9 @@ private fun archiveConversationId(source: String, conversationKey: String): Stri
 private fun agentBooleanForUi(key: String): Boolean {
     return Prefs.isEnabled(key)
 }
+
+/** 单条引用最多内联的字数；超出的部分让模型用 conversation_history 去取。 */
+private const val MessageReferenceInlineLimit = 800
+
+/** 一次最多引用几条，避免把上下文塞满。 */
+private const val MessageReferenceLimit = 3

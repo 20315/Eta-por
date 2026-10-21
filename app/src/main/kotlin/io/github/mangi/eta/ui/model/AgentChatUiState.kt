@@ -100,6 +100,8 @@ internal data class AgentChatUiState(
     val commandConfirm: CommandConfirmUi? = null,
     /** 输入框文本由本地持有，命令消费后靠这个递增令牌让它自己清空。 */
     val inputResetToken: Long = 0,
+    /** @ 引用：本次要带进上下文的历史消息（最多 3 条）；发送后清空。 */
+    val pendingMessageRefs: List<MessageReferenceUi> = emptyList(),
 ) {
     val canCompactContext: Boolean get() = !isStreaming && messageEdit == null && history.any {
         !it.contextSummary && (it.role == "assistant" || it.role == "tool")

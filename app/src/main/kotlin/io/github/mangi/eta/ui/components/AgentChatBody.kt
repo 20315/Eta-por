@@ -90,8 +90,11 @@ import io.github.mangi.eta.ui.markdown.StreamingMarkdownState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentCommand
 import io.github.mangi.eta.ui.model.CommandConfirmUi
+import io.github.mangi.eta.ui.model.ToolAccessUiState
+import io.github.mangi.eta.ui.model.ToolToggleItem
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.MessageReferenceUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.MessageEditUiState
 import io.github.mangi.eta.ui.model.SearchJumpUiState
@@ -192,9 +195,37 @@ internal fun AgentChatBody(
     onConfirmCommand: () -> Unit = {},
     onDismissCommandConfirm: () -> Unit = {},
     inputResetToken: Long = 0,
+    toolAccess: ToolAccessUiState,
+    referenceCandidates: List<MessageReferenceUi> = emptyList(),
+    pendingMessageRefs: List<MessageReferenceUi>,
+    onAttachReference: (MessageReferenceUi) -> Unit,
+    onRemoveReference: (String) -> Unit,
+    onRefreshToolAccess: () -> Unit,
+    onToggleTool: (ToolToggleItem, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberLazyListState()
+    // 可 @ 引用的消息：只取有正文的用户／助手消息，序号按消息流位置给。
+    val referenceCandidates = remember(messages) {
+        messages.mapIndexedNotNull { index, message ->
+            val content = when (message) {
+                is UserMessageUi -> message.content
+                is AgentMessageUi -> message.content
+                else -> null
+            }?.trim().orEmpty()
+            if (content.isEmpty()) {
+                null
+            } else {
+                MessageReferenceUi(
+                    messageId = message.id,
+                    sequence = index + 1,
+                    fromUser = message is UserMessageUi,
+                    preview = content.replace(Regex("\\s+"), " ").take(60),
+                    searchText = content.take(4_000),
+                )
+            }
+        }.takeLast(80)
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
@@ -312,6 +343,13 @@ internal fun AgentChatBody(
             onConfirmCommand = onConfirmCommand,
             onDismissCommandConfirm = onDismissCommandConfirm,
             inputResetToken = inputResetToken,
+            toolAccess = toolAccess,
+            referenceCandidates = referenceCandidates,
+            pendingMessageRefs = pendingMessageRefs,
+            onAttachReference = onAttachReference,
+            onRemoveReference = onRemoveReference,
+            onRefreshToolAccess = onRefreshToolAccess,
+            onToggleTool = onToggleTool,
             modifier = modifier,
         )
     }
@@ -372,6 +410,13 @@ private fun AgentChatScaffold(
     onConfirmCommand: () -> Unit = {},
     onDismissCommandConfirm: () -> Unit = {},
     inputResetToken: Long = 0,
+    toolAccess: ToolAccessUiState,
+    referenceCandidates: List<MessageReferenceUi> = emptyList(),
+    pendingMessageRefs: List<MessageReferenceUi>,
+    onAttachReference: (MessageReferenceUi) -> Unit,
+    onRemoveReference: (String) -> Unit,
+    onRefreshToolAccess: () -> Unit,
+    onToggleTool: (ToolToggleItem, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
@@ -428,6 +473,13 @@ private fun AgentChatScaffold(
                 onConfirmCommand = onConfirmCommand,
                 onDismissCommandConfirm = onDismissCommandConfirm,
                 inputResetToken = inputResetToken,
+                toolAccess = toolAccess,
+                referenceCandidates = referenceCandidates,
+                pendingMessageRefs = pendingMessageRefs,
+                onAttachReference = onAttachReference,
+                onRemoveReference = onRemoveReference,
+                onRefreshToolAccess = onRefreshToolAccess,
+                onToggleTool = onToggleTool,
             )
         },
     ) { innerPadding ->
@@ -1053,6 +1105,13 @@ private fun AgentChatBottomBar(
     onConfirmCommand: () -> Unit = {},
     onDismissCommandConfirm: () -> Unit = {},
     inputResetToken: Long = 0,
+    toolAccess: ToolAccessUiState,
+    referenceCandidates: List<MessageReferenceUi> = emptyList(),
+    pendingMessageRefs: List<MessageReferenceUi>,
+    onAttachReference: (MessageReferenceUi) -> Unit,
+    onRemoveReference: (String) -> Unit,
+    onRefreshToolAccess: () -> Unit,
+    onToggleTool: (ToolToggleItem, Boolean) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1161,6 +1220,13 @@ private fun AgentChatBottomBar(
                 onCancelMessageEdit = onCancelMessageEdit,
                 commands = commands,
                 inputResetToken = inputResetToken,
+                toolAccess = toolAccess,
+                referenceCandidates = referenceCandidates,
+                pendingMessageRefs = pendingMessageRefs,
+                onAttachReference = onAttachReference,
+                onRemoveReference = onRemoveReference,
+                onRefreshToolAccess = onRefreshToolAccess,
+                onToggleTool = onToggleTool,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

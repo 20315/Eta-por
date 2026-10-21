@@ -9,6 +9,8 @@ import io.github.mangi.eta.ui.components.AgentChatBody
 import io.github.mangi.eta.ui.components.LocalRoleplayChat
 import io.github.mangi.eta.ui.components.chatConversationCompositionKey
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
+import io.github.mangi.eta.ui.model.ToolAccessUiState
+import io.github.mangi.eta.ui.model.ToolToggleKind
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.roleplayChatUi
@@ -26,6 +28,9 @@ internal fun AgentHomeScreen(
     conversationKey: String?,
     isPaused: Boolean = false,
     onAction: (AgentHomeAction) -> Unit,
+    /** 输入框上方两个入口用的工具/技能开关状态。 */
+    toolAccess: ToolAccessUiState = ToolAccessUiState(),
+    onRefreshToolAccess: () -> Unit = {},
     isDrawerOpen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -74,6 +79,17 @@ internal fun AgentHomeScreen(
             inputResetToken = state.inputResetToken,
             onConfirmCommand = { onAction(AgentHomeAction.ConfirmAgentCommand) },
             onDismissCommandConfirm = { onAction(AgentHomeAction.DismissAgentCommandConfirm) },
+            toolAccess = toolAccess,
+            pendingMessageRefs = state.pendingMessageRefs,
+            onAttachReference = { onAction(AgentHomeAction.AttachMessageReference(it)) },
+            onRemoveReference = { onAction(AgentHomeAction.RemoveMessageReference(it)) },
+            onRefreshToolAccess = onRefreshToolAccess,
+            onToggleTool = { item, enabled ->
+                when (item.kind) {
+                    ToolToggleKind.Mcp -> onAction(AgentHomeAction.ToggleMcpServer(item.id, enabled))
+                    ToolToggleKind.Skill -> onAction(AgentHomeAction.ToggleSkill(item.id, enabled))
+                }
+            },
             onSuggestionClick = { prompt ->
                 onAction(AgentHomeAction.SubmitMessage(prompt))
             },

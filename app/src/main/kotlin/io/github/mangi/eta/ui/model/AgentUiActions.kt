@@ -25,6 +25,12 @@ sealed interface AgentHomeAction {
     data object OpenConversationNavigator : AgentHomeAction
     /** 命令确认卡：确认执行 / 收起。 */
     data object ConfirmAgentCommand : AgentHomeAction
+    /** 工具与技能面板：切换某个 MCP 服务器 / 技能的启用状态。 */
+    data class ToggleMcpServer(val serverId: String, val enabled: Boolean) : AgentHomeAction
+    data class ToggleSkill(val skillId: String, val enabled: Boolean) : AgentHomeAction
+    /** @ 引用：挂上 / 去掉一条历史消息。 */
+    data class AttachMessageReference(val reference: MessageReferenceUi) : AgentHomeAction
+    data class RemoveMessageReference(val messageId: String) : AgentHomeAction
     data object DismissAgentCommandConfirm : AgentHomeAction
     data class DeleteMessage(val id: String) : AgentHomeAction
     data class RegenerateMessage(val id: String) : AgentHomeAction

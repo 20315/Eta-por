@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +60,8 @@ internal fun ConversationNavigatorSheet(
     latestMessageId: String?,
     onDismiss: () -> Unit,
     onJump: (String) -> Unit,
+    /** 长按一条直接把它挂成 @ 引用。 */
+    onReference: (String) -> Unit = {},
     entriesFor: (String) -> List<ConversationNavEntry>,
 ) {
     OverlayBottomSheet(
@@ -126,7 +129,11 @@ internal fun ConversationNavigatorSheet(
                     }
                 }
                 items(items = entries, key = { entry -> entry.messageId }) { entry ->
-                    ConversationNavRow(entry = entry, onClick = { onJump(entry.messageId) })
+                    ConversationNavRow(
+                        entry = entry,
+                        onClick = { onJump(entry.messageId) },
+                        onLongClick = { onReference(entry.messageId) },
+                    )
                 }
             }
             if (latestMessageId != null) {
@@ -147,17 +154,19 @@ internal fun ConversationNavigatorSheet(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationNavRow(
     entry: ConversationNavEntry,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val isPrompt = entry.role == ConversationNavRole.User
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.Top,
     ) {

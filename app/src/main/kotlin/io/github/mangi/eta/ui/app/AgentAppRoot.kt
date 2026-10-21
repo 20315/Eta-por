@@ -203,6 +203,43 @@ fun AgentAppRoot(
 
     var conversationPaneOpen by remember { mutableStateOf(false) }
     var conversationNavigatorOpen by remember { mutableStateOf(false) }
+    // 工具与技能面板的数据：改成「打开时主动读一次」，不依赖 Flow 的首次发射，
+    // 也不怕读取失败时静默为空——面板每次打开都会重新拉。
+    var mcpServers by remember { mutableStateOf<List<io.github.mangi.eta.data.model.McpServerSetting>>(emptyList()) }
+    var toolAccessRefresh by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(toolAccessRefresh) {
+        runCatching { io.github.mangi.eta.data.repository.McpServerRepository.servers() }
+            .onSuccess { mcpServers = it }
+        if (appViewModel.skills.skillsState.skills.isEmpty()) {
+            appViewModel.skills.refreshSkills()
+        }
+    }
+    val skillItems = appViewModel.skills.skillsState.skills
+    val toolAccess = remember(mcpServers, skillItems) {
+        io.github.mangi.eta.ui.model.ToolAccessUiState(
+            items = mcpServers.map { server ->
+                io.github.mangi.eta.ui.model.ToolToggleItem(
+                    id = server.id,
+                    title = server.name,
+                    subtitle = context.getString(
+                        R.string.tool_access_tool_count,
+                        server.enabledToolNames.size,
+                        server.tools.size,
+                    ),
+                    enabled = server.enabled,
+                    kind = io.github.mangi.eta.ui.model.ToolToggleKind.Mcp,
+                )
+            } + skillItems.map { skill ->
+                io.github.mangi.eta.ui.model.ToolToggleItem(
+                    id = skill.id,
+                    title = skill.name,
+                    subtitle = skill.description.take(60),
+                    enabled = skill.enabled,
+                    kind = io.github.mangi.eta.ui.model.ToolToggleKind.Skill,
+                )
+            },
+        )
+    }
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var categoryMoveTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
@@ -465,6 +502,22 @@ fun AgentAppRoot(
                                 AgentHomeAction.CancelMessageEdit -> agentState.cancelMessageEdit()
                                 AgentHomeAction.SearchJumpConsumed -> agentState.consumeSearchJump()
                                 AgentHomeAction.OpenConversationNavigator -> conversationNavigatorOpen = true
+                                is AgentHomeAction.AttachMessageReference ->
+                                    agentState.attachMessageReference(action.reference)
+                                is AgentHomeAction.RemoveMessageReference ->
+                                    agentState.removeMessageReference(action.messageId)
+                                is AgentHomeAction.ToggleMcpServer -> uiScope.launch {
+                                    runCatching {
+                                        val server = io.github.mangi.eta.data.repository.McpServerRepository
+                                            .serverById(action.serverId) ?: return@runCatching
+                                        io.github.mangi.eta.data.repository.McpServerRepository.update(
+                                            server.copy(enabled = action.enabled),
+                                        )
+                                        toolAccessRefresh += 1
+                                    }
+                                }
+                                is AgentHomeAction.ToggleSkill ->
+                                    appViewModel.skills.toggleSkill(action.skillId, action.enabled)
                                 AgentHomeAction.ConfirmAgentCommand -> agentState.resolveCommandConfirm(true)
                                 AgentHomeAction.DismissAgentCommandConfirm -> agentState.resolveCommandConfirm(false)
                                 AgentHomeAction.ResumeInterruptedRun -> agentState.resumeInterruptedRun()
@@ -493,12 +546,37 @@ fun AgentAppRoot(
                             }
                         },
                         isDrawerOpen = conversationPaneOpen,
+                        toolAccess = toolAccess,
+                        onRefreshToolAccess = { toolAccessRefresh += 1 },
                     )
                     ConversationNavigatorSheet(
                         show = conversationNavigatorOpen,
                         messagesKey = agentState.homeState.messages,
                         latestMessageId = agentState.homeState.messages.lastOrNull()?.id,
                         onDismiss = { conversationNavigatorOpen = false },
+                        onReference = { messageId ->
+                            val messages = agentState.homeState.messages
+                            val index = messages.indexOfFirst { it.id == messageId }
+                            if (index >= 0) {
+                                val content = when (val message = messages[index]) {
+                                    is io.github.mangi.eta.ui.model.UserMessageUi -> message.content
+                                    is io.github.mangi.eta.ui.model.AgentMessageUi -> message.content
+                                    else -> ""
+                                }.trim()
+                                if (content.isNotEmpty()) {
+                                    agentState.attachMessageReference(
+                                        io.github.mangi.eta.ui.model.MessageReferenceUi(
+                                            messageId = messageId,
+                                            sequence = index + 1,
+                                            fromUser = messages[index] is io.github.mangi.eta.ui.model.UserMessageUi,
+                                            preview = content.replace(Regex("\\s+"), " ").take(60),
+                                            searchText = content.take(4_000),
+                                        ),
+                                    )
+                                }
+                            }
+                            conversationNavigatorOpen = false
+                        },
                         onJump = { messageId ->
                             conversationNavigatorOpen = false
                             agentState.jumpToMessage(messageId)

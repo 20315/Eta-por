@@ -25,9 +25,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -86,7 +86,10 @@ import io.github.mangi.eta.ui.model.AgentCommand
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
+import io.github.mangi.eta.ui.model.MessageReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
+import io.github.mangi.eta.ui.model.ToolAccessUiState
+import io.github.mangi.eta.ui.model.ToolToggleItem
 import io.github.mangi.eta.ui.model.filterAgentCommands
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.DropdownImpl
@@ -114,6 +117,7 @@ private val SpeedCapsuleMinWidth = 72.dp
 /**
  * Agent 输入器始终保持同一空间结构，聚焦、输入和执行过程只改变状态，不搬动操作入口。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun AgentChatInputBar(
     input: String,
@@ -151,6 +155,15 @@ internal fun AgentChatInputBar(
     commands: List<AgentCommand> = emptyList(),
     /** 命令执行后由业务状态递增，用来清掉本地输入框里的命令原文。 */
     inputResetToken: Long = 0,
+    /** @ 引用：可选的历史消息与已选中的引用。 */
+    referenceCandidates: List<MessageReferenceUi> = emptyList(),
+    pendingMessageRefs: List<MessageReferenceUi>,
+    onAttachReference: (MessageReferenceUi) -> Unit,
+    onRemoveReference: (String) -> Unit,
+    /** MCP 与技能的开关状态；为空时不显示这两个入口。 */
+    toolAccess: ToolAccessUiState,
+    onRefreshToolAccess: () -> Unit,
+    onToggleTool: (ToolToggleItem, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -164,10 +177,40 @@ internal fun AgentChatInputBar(
     }
     val typedText by remember { derivedStateOf { textFieldState.text.toString() } }
     val commandMatches = remember(typedText, commands) { filterAgentCommands(typedText, commands) }
+    // 行首或空格后的 @ 才当引用触发，避免邮箱、@用户名 之类误伤。
+    val mentionQuery = remember(typedText) {
+        Regex("(^|\\s)@([^\\s@]*)$").find(typedText)?.groupValues?.get(2)
+    }
+    fun clearMentionToken() {
+        val current = textFieldState.text.toString()
+        val at = current.lastIndexOf('@')
+        if (at >= 0) {
+            textFieldState.edit {
+                replace(at, length, "")
+                selection = TextRange(at)
+            }
+        }
+    }
+    val mentionMatches = remember(mentionQuery, referenceCandidates) {
+        val query = mentionQuery?.trim().orEmpty()
+        if (query.isEmpty()) {
+            referenceCandidates.takeLast(MentionPanelLimit).reversed()
+        } else {
+            referenceCandidates
+                .filter { candidate ->
+                    // 用全文匹配：预览只有 60 字，靠它搜不到想找的那句原话。
+                    candidate.searchText.contains(query, ignoreCase = true) ||
+                        candidate.preview.contains(query, ignoreCase = true)
+                }
+                .takeLast(MentionPanelLimit)
+                .reversed()
+        }
+    }
     // 内存百分比从顶栏搬到这里：顶栏太挤，输入框右上角更顺手，点开就是内存面板。
     val memoryContext = LocalContext.current
     var memoryUsage by remember { mutableStateOf(readMemoryUsage(memoryContext)) }
     var showMemorySheet by remember { mutableStateOf(false) }
+    var showToolSheet by remember { mutableStateOf(false) }
     LaunchedEffect(memoryContext) {
         while (true) {
             memoryUsage = readMemoryUsage(memoryContext)
@@ -287,6 +330,56 @@ internal fun AgentChatInputBar(
             )
         }
 
+        if (pendingMessageRefs.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                pendingMessageRefs.forEach { reference ->
+                    ReferenceChip(reference = reference, onRemove = { onRemoveReference(reference.messageId) })
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = mentionQuery != null && referenceCandidates.isNotEmpty(),
+            enter = fadeIn(tween(140)) + expandVertically(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(140)),
+        ) {
+            AgentMentionPanel(
+                query = mentionQuery.orEmpty(),
+                onQueryChange = { next ->
+                    // 面板里的输入直接回写正文的 @ 片段，保持单一文本来源。
+                    val current = textFieldState.text.toString()
+                    val at = current.lastIndexOf('@')
+                    if (at >= 0) {
+                        textFieldState.edit {
+                            replace(at + 1, current.length, next)
+                            selection = TextRange(at + 1 + next.length)
+                        }
+                    }
+                },
+                candidates = mentionMatches,
+                selectedIds = pendingMessageRefs.map { it.messageId }.toSet(),
+                onClose = { clearMentionToken() },
+                onPick = { reference ->
+                    val current = textFieldState.text.toString()
+                    val at = current.lastIndexOf('@')
+                    if (at >= 0) {
+                        textFieldState.edit {
+                            replace(0, length, current.substring(0, at))
+                            selection = TextRange(at)
+                        }
+                    }
+                    onAttachReference(reference)
+                },
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+
         AnimatedVisibility(
             visible = commandMatches.isNotEmpty(),
             enter = fadeIn(tween(140)) + expandVertically(tween(160)),
@@ -348,6 +441,39 @@ internal fun AgentChatInputBar(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 入口常驻：数据还没加载完时也要能点开看，否则会像“功能没生效”。
+                    run {
+                        Text(
+                            text = if (toolAccess.mcpItems.isEmpty()) {
+                                stringResource(R.string.tool_access_mcp_chip_plain)
+                            } else if (toolAccess.mcpEnabled == 0) {
+                                stringResource(R.string.tool_access_mcp_chip_off)
+                            } else {
+                                stringResource(
+                                    R.string.tool_access_mcp_chip,
+                                    toolAccess.mcpEnabled,
+                                    toolAccess.mcpItems.size,
+                                )
+                            },
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier
+                                .clickable { showToolSheet = true }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                        Text(
+                            text = if (toolAccess.skillItems.isEmpty()) {
+                                stringResource(R.string.tool_access_skill_chip_plain)
+                            } else {
+                                stringResource(R.string.tool_access_skill_chip, toolAccess.skillEnabled)
+                            },
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier
+                                .clickable { showToolSheet = true }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
                     Text(
                         text = stringResource(R.string.memory_inline_label, memoryUsage.usedPercent),
                         style = MiuixTheme.textStyles.footnote2,
@@ -358,6 +484,13 @@ internal fun AgentChatInputBar(
                     )
                 }
                 MemoryUsageSheet(show = showMemorySheet, onDismiss = { showMemorySheet = false })
+                ToolAccessSheet(
+                    show = showToolSheet,
+                    state = toolAccess,
+                    onRefresh = onRefreshToolAccess,
+                    onToggle = onToggleTool,
+                    onDismiss = { showToolSheet = false },
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -702,5 +835,35 @@ private fun PendingImageStrip(
                 }
             }
         }
+    }
+}
+
+/** 引用面板一次最多显示多少条候选。 */
+private const val MentionPanelLimit = 20
+
+/** 输入框上的引用 chip：显示序号、角色与删除。 */
+@Composable
+private fun ReferenceChip(reference: MessageReferenceUi, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+            .padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "#" + reference.sequence + (if (reference.fromUser) " 我" else " Eta"),
+            style = MiuixTheme.textStyles.footnote2,
+            color = MiuixTheme.colorScheme.primary,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = "×",
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier
+                .clickable(onClick = onRemove)
+                .padding(horizontal = 4.dp),
+        )
     }
 }
