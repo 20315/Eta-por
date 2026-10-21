@@ -12,6 +12,11 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.Request
 import org.json.JSONObject
 
+internal fun supportsSpeechSession(provider: TtsProvider): Boolean = when (provider) {
+    TtsProvider.QWEN, TtsProvider.DOUBAO -> true
+    TtsProvider.NONE, TtsProvider.SYSTEM, TtsProvider.GEMINI, TtsProvider.MINIMAX -> false
+}
+
 /**
  * 整篇朗读在一个流式合成会话里完成：文本按句送入同一会话，服务端连续生成音频。
  * 与逐段独立请求相比，语调、音量和语速前后连贯，也没有段与段之间的接缝与停顿抖动。
@@ -28,6 +33,8 @@ internal suspend fun streamSpeech(
         TtsProvider.DOUBAO -> streamDoubao(settings, credentials, chunks, onAudio)
         TtsProvider.SYSTEM -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "系统语音不支持整篇流式合成")
         TtsProvider.NONE -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "请先选择语音播报服务")
+        TtsProvider.GEMINI, TtsProvider.MINIMAX ->
+            throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "当前语音服务使用逐段流式合成")
     }
 }
 
