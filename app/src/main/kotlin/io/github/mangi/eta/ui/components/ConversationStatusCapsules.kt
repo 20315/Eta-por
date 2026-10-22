@@ -25,20 +25,21 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 顶栏状态胶囊组：内存占用 + 工具档。
+ * 顶栏状态胶囊组：工作区 + 工具档。
  *
- * 上下文用量不在这里——输入栏右侧已经有圆环按钮（同一份数字），顶栏再放一遍是重复，
- * 省下来的宽度正好留给工具档，工具档才有机会显示全称。
+ * 内存百分比搬到输入框右上角了；上下文用量在输入栏右侧已有圆环按钮（同一份数字），
+ * 顶栏再放一遍是重复。所以这里只剩两枚：工作区（跳转入口）与工具档（二选一状态），
+ * 两枚并排、由顶栏两侧等权留白撑到居中。
  *
  * 宽度仍然自己算：顶栏 actions 行给不给可信约束不一定，按「屏宽 − 其余顶栏控件占位」兜底，
  * 再与父级约束取较小值，预算内逐级压缩文字，所以胶囊组永远不会超出可用宽度。
  */
 
 /** 顶栏里除胶囊组以外必须占住的位置：导航图标、标题、朗读、新建、⋯ 与两侧留白。 */
-private val TopBarCapsuleReserve = 216.dp
+private val TopBarCapsuleReserve = 248.dp
 
 /** 父级给不出可信约束时的兜底下限。 */
-private val TopBarCapsuleFloor = 56.dp
+private val TopBarCapsuleFloor = 100.dp
 
 /** 各胶囊的估算占位；估偏大只会让胶囊早一点变短标。 */
 private val FullProfileCapsuleWidth = 100.dp
@@ -57,6 +58,9 @@ private val ProfileFullBudget = FullProfileCapsuleWidth
 @Composable
 internal fun ConversationStatusCapsules(
     model: AgentModelOptionUi?,
+    onOpenWorkspace: () -> Unit,
+    workspaceActive: Boolean = false,
+    onCloseWorkspace: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -68,8 +72,17 @@ internal fun ConversationStatusCapsules(
             horizontalArrangement = Arrangement.spacedBy(CapsuleSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 内存百分比搬到输入框右上角了，顶栏这里只留模式开关。
-            if (showProfile) LocalProfileTopBarCapsule(model, compact = !profileFull)
+            // 一颗长胶囊三段：纯聊天 / 全部工具 / 工作区。
+            // 三段都是纯图标，没有文字，所以宽度预算不够时整颗收起来即可，不存在压文字。
+            if (showProfile) {
+                LocalProfileTopBarCapsule(
+                    model = model,
+                    compact = !profileFull,
+                    workspaceActive = workspaceActive,
+                    onOpenWorkspace = onOpenWorkspace,
+                    onCloseWorkspace = onCloseWorkspace,
+                )
+            }
         }
     }
 }

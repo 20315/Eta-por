@@ -1,9 +1,9 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +18,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
@@ -32,6 +38,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,9 +47,13 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -52,7 +64,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,8 +88,6 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Alarm
-import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.ExpandLess
@@ -136,6 +145,8 @@ internal fun ConversationPanePanel(
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
     onMoveToCategory: (ConversationSummaryUi) -> Unit,
+    /** 拖放落点：第二个参数是目标分组 id，null 表示移出分组。未提供时回落到旧的弹窗选组。 */
+    onDropConversationToCategory: ((ConversationSummaryUi, String?) -> Unit)? = null,
     onConversationExport: (ConversationSummaryUi) -> Unit,
     onConversationDelete: (ConversationSummaryUi) -> Unit,
     onConversationPin: (ConversationSummaryUi) -> Unit,
@@ -149,7 +160,10 @@ internal fun ConversationPanePanel(
     onOpenCharacters: () -> Unit,
     onOpenPermissions: () -> Unit,
     onOpenTasks: () -> Unit,
-    onOpenCategories: () -> Unit,
+    onCreateCategory: (String) -> Unit,
+    onRenameCategory: (String, String) -> Unit,
+    onMoveCategory: (String, Int) -> Unit,
+    onDeleteCategoryConfirmed: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // state.conversations 已由 AgentAppState 按标题、预览与消息内容过滤。
@@ -158,12 +172,38 @@ internal fun ConversationPanePanel(
     val recentOpened = state.recentOpenedIds
         .mapNotNull { id -> state.conversations.firstOrNull { it.id == id } }
     var batchMode by remember { mutableStateOf(false) }
+    // 侧栏内联分类：新建/重命名共用一个输入对话框，不再跳分类页。
+    var categoryEditing by remember { mutableStateOf<CategoryEditTarget?>(null) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var collapsedSections by rememberSaveable(
         stateSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() }),
     ) { mutableStateOf(emptySet<String>()) }
-    val capabilities = rememberDeviceCapabilities()
-    val groups = remember(state.conversations, state.categories) { state.conversations.groupForDrawer(state.categories) }
+    // 拖放：记录每个分组标题的屏幕范围，拖动会话时据此判断落点。
+    val categoryBounds = remember { mutableStateMapOf<String?, androidx.compose.ui.geometry.Rect>() }
+    var draggingConversation by remember { mutableStateOf<ConversationSummaryUi?>(null) }
+    // 悬停高亮：拖动时命中的分组标题会亮起，让落点可见。
+    var hoverCategoryId by remember { mutableStateOf<String?>(null) }
+    var hoverActive by remember { mutableStateOf(false) }
+    fun hitCategory(y: Float) =
+        categoryBounds.entries.firstOrNull { y >= it.value.top && y <= it.value.bottom }
+    fun updateHover(y: Float) {
+        val hit = hitCategory(y)
+        hoverActive = hit != null
+        hoverCategoryId = hit?.key
+    }
+    fun dropAt(y: Float) {
+        hoverActive = false
+        hoverCategoryId = null
+        val conv = draggingConversation ?: return
+        draggingConversation = null
+        // 命中任一分组标题才算有效落点；key 为 null 的内置分区表示「移出分组」。
+        val hit = categoryBounds.entries.firstOrNull { y >= it.value.top && y <= it.value.bottom } ?: return
+        onDropConversationToCategory?.invoke(conv, hit.key)
+    }
+        val capabilities = rememberDeviceCapabilities()
+    val groups = remember(state.conversations, state.categories) {
+        state.conversations.groupForDrawer(state.categories)
+    }
 
     Surface(
         modifier = modifier
@@ -283,10 +323,15 @@ internal fun ConversationPanePanel(
                                 onToggle = {
                                     collapsedSections = if (collapsed) collapsedSections - sectionKey else collapsedSections + sectionKey
                                 },
-                                // 分类分组标题上的入口只进入多选（不预勾任何一条），整组删除不再有一键路径
-                                onDeleteCategory = if (group.section is ConversationDrawerSection.Category) {
-                                    { batchMode = true; selectedIds = emptySet() }
-                                } else null,
+                                categoryId = (group.section as? ConversationDrawerSection.Category)?.id,
+                            onHeaderBounds = { id, rect -> categoryBounds[id] = rect },
+                            highlighted = hoverActive &&
+                                hoverCategoryId == (group.section as? ConversationDrawerSection.Category)?.id,
+                                onEditCategory = { id, currentName ->
+                                    categoryEditing = CategoryEditTarget.Rename(id, currentName)
+                                },
+                                onMoveCategory = onMoveCategory,
+                                onDeleteCategory = { id -> onDeleteCategoryConfirmed(id) },
                             )
                         }
                         if (collapsed) return@forEach
@@ -312,6 +357,10 @@ internal fun ConversationPanePanel(
                                 onDelete = { onConversationDelete(conversation) },
                                 onPin = { onConversationPin(conversation) },
                                 onMoveToCategory = { onMoveToCategory(conversation) },
+                            onDragStart = { draggingConversation = conversation },
+                            onDragAt = { y -> updateHover(y) },
+                            onDropAt = { y -> dropAt(y) },
+                            onDragCancel = { draggingConversation = null },
                             )
                         }
                     }
@@ -330,10 +379,25 @@ internal fun ConversationPanePanel(
                         query = state.searchQuery,
                         onSearchChange = onSearchChange,
                         onOpenSettings = onOpenSettings,
+                        onNewCategory = { categoryEditing = CategoryEditTarget.New },
                     )
                     Spacer(Modifier.height(ConversationPanelMetrics.BottomInset))
                 }
             }
+        }
+
+        categoryEditing?.let { target ->
+            CategoryNameDialog(
+                target = target,
+                onDismiss = { categoryEditing = null },
+                onConfirm = { name ->
+                    when (target) {
+                        is CategoryEditTarget.New -> onCreateCategory(name)
+                        is CategoryEditTarget.Rename -> onRenameCategory(target.id, name)
+                    }
+                    categoryEditing = null
+                },
+            )
         }
     }
 }
@@ -353,6 +417,7 @@ private fun PaneSearchAndSettings(
     query: String,
     onSearchChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onNewCategory: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -379,6 +444,14 @@ private fun PaneSearchAndSettings(
             },
             content = {},
         )
+        // 新建分类就地弹输入框，不再跳分类页。
+        IconButton(
+            onClick = onNewCategory,
+            modifier = Modifier.size(48.dp).clip(CircleShape)
+                .background(MiuixTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.conversation_category_new), modifier = Modifier.size(22.dp))
+        }
         IconButton(
             onClick = onOpenSettings,
             modifier = Modifier.size(48.dp).clip(CircleShape)
@@ -431,13 +504,37 @@ private fun ConversationSectionHeader(
     group: ConversationDrawerGroup,
     collapsed: Boolean,
     onToggle: () -> Unit,
-    onDeleteCategory: (() -> Unit)?,
+    categoryId: String?,
+    onHeaderBounds: (String?, androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
+    highlighted: Boolean = false,
+    onEditCategory: (String, String) -> Unit,
+    onMoveCategory: (String, Int) -> Unit,
+    onDeleteCategory: (String) -> Unit,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     val headerLabel = group.localizedLabel()
+    // 外层只负责左右留白，内层负责圆角与点击：这样按压/悬停色块是和会话行一致的圆角块，
+    // 而不是通栏直角带（之前 clickable 直接贴在全宽 Row 上，涟漪是方的）。
     Row(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = ConversationPanelMetrics.RowHorizontalPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+    Row(
+        modifier = Modifier.weight(1f)
+            // 记录本分组的屏幕范围：拖动会话时据此判断松手落在哪个分组上。
+            .onGloballyPositioned { coords -> onHeaderBounds(categoryId, coords.boundsInRoot()) }
+            .clip(RoundedCornerShape(ConversationPanelMetrics.RowCornerRadius))
+            .then(
+                if (highlighted) {
+                    Modifier.background(MiuixTheme.colorScheme.surfaceContainerHighest)
+                } else {
+                    Modifier
+                },
+            )
             .clickable(onClick = onToggle)
-            .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 6.dp),
+            .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -456,12 +553,72 @@ private fun ConversationSectionHeader(
         Text(headerLabel, color = MiuixTheme.colorScheme.onSurface,
             style = MiuixTheme.textStyles.body1, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f).semantics { heading() })
-        Text(
-            if (collapsed) "▸" else "▾",
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            style = MiuixTheme.textStyles.footnote1, fontSize = 12.sp,
-            modifier = Modifier.padding(start = 6.dp),
-        )
+        if (categoryId != null) {
+            Box {
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Outlined.MoreHoriz,
+                        contentDescription = stringResource(R.string.conversation_category_rename),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                WindowListPopup(
+                    show = showMenu,
+                    alignment = PopupPositionProvider.Align.End,
+                    onDismissRequest = { showMenu = false },
+                ) {
+                    // 与会话菜单一致：带图标，删除用红色强调。
+                    val iconSize = ConversationPanelMetrics.ActionIconSize
+                    val items = listOf(
+                        DropdownItem(text = stringResource(R.string.conversation_category_rename), icon = { modifier ->
+                            Icon(MiuixIcons.Rename, null, modifier.size(iconSize), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }),
+                        DropdownItem(text = stringResource(R.string.conversation_category_move_up), icon = { modifier ->
+                            Icon(Icons.Rounded.KeyboardArrowUp, null, modifier.size(iconSize), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }),
+                        DropdownItem(text = stringResource(R.string.conversation_category_move_down), icon = { modifier ->
+                            Icon(Icons.Rounded.KeyboardArrowDown, null, modifier.size(iconSize), tint = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }),
+                        DropdownItem(text = stringResource(R.string.conversation_category_delete), icon = { modifier ->
+                            Icon(MiuixIcons.Delete, null, modifier.size(iconSize), tint = MiuixTheme.colorScheme.error)
+                        }),
+                    )
+                    val deleteColors = DropdownDefaults.dropdownColors(
+                        contentColor = MiuixTheme.colorScheme.error,
+                        selectedContentColor = MiuixTheme.colorScheme.error,
+                        selectedIndicatorColor = MiuixTheme.colorScheme.error,
+                    )
+                    ListPopupColumn {
+                        items.forEachIndexed { index, item ->
+                            DropdownImpl(
+                                item = item,
+                                optionSize = items.size,
+                                isSelected = false,
+                                index = index,
+                                dropdownColors = if (index == 3) deleteColors else DropdownDefaults.dropdownColors(),
+                                onSelectedIndexChange = {
+                                    showMenu = false
+                                    when (index) {
+                                        0 -> onEditCategory(categoryId, headerLabel)
+                                        1 -> onMoveCategory(categoryId, -1)
+                                        2 -> onMoveCategory(categoryId, 1)
+                                        else -> onDeleteCategory(categoryId)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(
+                if (collapsed) "▸" else "▾",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = MiuixTheme.textStyles.footnote1, fontSize = 12.sp,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
     }
 }
 
@@ -525,8 +682,16 @@ private fun ConversationTextRow(
     onDelete: () -> Unit,
     onPin: () -> Unit,
     onMoveToCategory: () -> Unit,
+    onDragStart: () -> Unit = {},
+    onDragAt: (Float) -> Unit = {},
+    onDropAt: (Float) -> Unit = {},
+    onDragCancel: () -> Unit = {},
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
+    // 本节自身在屏幕上的纵向位置：拖动时用它把手指坐标换算成屏幕坐标，判断落点。
+    var rowTop by remember { mutableFloatStateOf(0f) }
+    var lastDropY by remember { mutableFloatStateOf(0f) }
+    var dragLift by remember { mutableFloatStateOf(0f) }
     val hapticFeedback = LocalHapticFeedback.current
 
     Box(modifier = Modifier.fillMaxWidth()) {
@@ -543,13 +708,33 @@ private fun ConversationTextRow(
                         Color.Transparent
                     },
                 )
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showActionMenu = true
-                    },
-                )
+                .graphicsLayer {
+                    translationY = dragLift
+                    val lift = dragLift != 0f
+                    scaleX = if (lift) 1.02f else 1f
+                    scaleY = if (lift) 1.02f else 1f
+                    shadowElevation = if (lift) 8f else 0f
+                }
+                .onGloballyPositioned { coords -> rowTop = coords.boundsInRoot().top }
+                .pointerInput(conversation.id) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { onDragStart() },
+                        onDrag = { change, dragAmount ->
+                            dragLift += dragAmount.y
+                            lastDropY = rowTop + change.position.y
+                            onDragAt(lastDropY)
+                        },
+                        onDragEnd = {
+                            dragLift = 0f
+                            onDropAt(lastDropY)
+                        },
+                        onDragCancel = {
+                            dragLift = 0f
+                            onDragCancel()
+                        },
+                    )
+                }
+                .clickable(onClick = onClick)
                 .padding(
                     horizontal = ConversationPanelMetrics.RowHorizontalPadding,
                     vertical = ConversationPanelMetrics.RowVerticalPadding,
@@ -606,6 +791,23 @@ private fun ConversationTextRow(
                         .clip(CircleShape)
                         .background(MiuixTheme.colorScheme.primary),
                 )
+            }
+            // 三点只在选中行出现：常驻会让每行都多一个图标，侧栏本来就密；
+            // 选中态本身表示「正在操作这条」，三点放在这里最自然。
+            if (selected && !batchMode) {
+                IconButton(
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showActionMenu = true
+                    },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.MoreHoriz,
+                        contentDescription = stringResource(R.string.action_more),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
 
@@ -691,7 +893,7 @@ private fun ConversationTextRow(
             ListPopupColumn {
                 DropdownImpl(
                     item = pinItem,
-                    optionSize = 5,
+                    optionSize = 4,
                     isSelected = false,
                     index = 0,
                     onSelectedIndexChange = {
@@ -700,21 +902,10 @@ private fun ConversationTextRow(
                     },
                 )
                 DropdownImpl(
-                    item = moveItem,
-                    optionSize = 5,
+                    item = renameItem,
+                    optionSize = 4,
                     isSelected = false,
                     index = 1,
-                    onSelectedIndexChange = {
-                        showActionMenu = false
-                        onMoveToCategory()
-                    },
-                )
-
-                DropdownImpl(
-                    item = renameItem,
-                    optionSize = 5,
-                    isSelected = false,
-                    index = 2,
                     onSelectedIndexChange = {
                         showActionMenu = false
                         onRename()
@@ -722,9 +913,9 @@ private fun ConversationTextRow(
                 )
                 DropdownImpl(
                     item = exportItem,
-                    optionSize = 5,
+                    optionSize = 4,
                     isSelected = false,
-                    index = 3,
+                    index = 2,
                     onSelectedIndexChange = {
                         showActionMenu = false
                         onExport()
@@ -732,9 +923,9 @@ private fun ConversationTextRow(
                 )
                 DropdownImpl(
                     item = deleteItem,
-                    optionSize = 5,
+                    optionSize = 4,
                     isSelected = false,
-                    index = 4,
+                    index = 3,
                     dropdownColors = deleteColors,
                     onSelectedIndexChange = {
                         showActionMenu = false
@@ -806,9 +997,10 @@ private fun ConversationDrawerSection.storageKey(): String = when (this) {
 }
 
 private fun List<ConversationSummaryUi>.groupForDrawer(categories: List<Pair<String, String>>): List<ConversationDrawerGroup> {
-    // 有会话归属分类时按「置顶 / 各分类 / 未分类」分组，否则回退到时间分组。
+    // 只要建过分类就按「置顶 / 各分类 / 未分类」分组；空分类也要露出来，
+    // 否则刚建完分类看不到东西，像没保存成功。没有分类时才回退到时间分组。
     val known = categories.toMap()
-    if (known.isNotEmpty() && any { it.categoryId != null && known.containsKey(it.categoryId) }) {
+    if (known.isNotEmpty()) {
         val categorizedGroups = mutableListOf<ConversationDrawerGroup>()
         val pinnedItems = filter { it.isPinned }
         if (pinnedItems.isNotEmpty()) {
@@ -817,12 +1009,10 @@ private fun List<ConversationSummaryUi>.groupForDrawer(categories: List<Pair<Str
         val rest = filterNot { it.isPinned }
         categories.forEach { (categoryId, categoryName) ->
             val items = rest.filter { it.categoryId == categoryId }
-            if (items.isNotEmpty()) {
-                categorizedGroups += ConversationDrawerGroup(
-                    ConversationDrawerSection.Category(categoryId, categoryName),
-                    items,
-                )
-            }
+            categorizedGroups += ConversationDrawerGroup(
+                ConversationDrawerSection.Category(categoryId, categoryName),
+                items,
+            )
         }
         val loose = rest.filter { it.categoryId == null || !known.containsKey(it.categoryId) }
         if (loose.isNotEmpty()) {
@@ -859,3 +1049,62 @@ private fun isUpdatedToday(timestampMillis: Long): Boolean {
         now.get(java.util.Calendar.DAY_OF_YEAR) == target.get(java.util.Calendar.DAY_OF_YEAR)
 }
 
+/** 侧栏内联分类对话框的两种用途。 */
+private sealed interface CategoryEditTarget {
+    data object New : CategoryEditTarget
+    data class Rename(val id: String, val name: String) : CategoryEditTarget
+}
+
+/** 新建 / 重命名分类的输入对话框：只收一个名字，确认后交给上层写库。 */
+@Composable
+private fun CategoryNameDialog(
+    target: CategoryEditTarget,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember {
+        mutableStateOf(if (target is CategoryEditTarget.Rename) target.name else "")
+    }
+    val isNew = target is CategoryEditTarget.New
+    EtaWindowDialog(
+        show = true,
+        title = stringResource(
+            if (isNew) R.string.conversation_category_new else R.string.conversation_category_rename,
+        ),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MiuixTheme.colorScheme.surfaceContainerHighest)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                if (name.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.conversation_category_name_hint),
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+                BasicTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = MiuixTheme.colorScheme.onSurface,
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            MiuixDialogActions(
+                confirmText = stringResource(R.string.conversation_category_save),
+                confirmEnabled = name.isNotBlank(),
+                onCancel = onDismiss,
+                onConfirm = { onConfirm(name.trim()) },
+            )
+        }
+    }
+}

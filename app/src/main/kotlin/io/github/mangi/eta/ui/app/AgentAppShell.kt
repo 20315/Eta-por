@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.model.LocalToolProfile
+import io.github.mangi.eta.ui.components.WorkspaceShiftHost
 import io.github.mangi.eta.ui.components.AdaptiveTopAppBar
 import io.github.mangi.eta.ui.components.CharacterAvatar
 import io.github.mangi.eta.ui.components.ConversationSidePaneScaffold
@@ -118,8 +123,18 @@ internal fun AgentAppShell(
     onOpenAccessibilitySettings: () -> Unit,
     onOpenModelProviders: () -> Unit,
     onOpenTasks: () -> Unit,
-    onOpenCategories: () -> Unit,
+    onCreateCategory: (String) -> Unit,
+    onRenameCategory: (String, String) -> Unit,
+    onMoveCategory: (String, Int) -> Unit,
+    onDeleteCategoryConfirmed: (String) -> Unit,
     conversationStatus: (@Composable () -> Unit)? = null,
+    /** 工作区面板打开时，只把顶栏以下的内容左移，顶栏那一行保持原样。 */
+    workspaceShifted: Boolean = false,
+    onDropConversationToCategory: ((io.github.mangi.eta.ui.model.ConversationSummaryUi, String?) -> Unit)? = null,
+    workspaceVisible: Boolean = false,
+    onWorkspaceOpen: () -> Unit = {},
+    onWorkspaceDismiss: () -> Unit = {},
+    workspaceContent: (@Composable () -> Unit)? = null,
     /** 顶栏放不下的低频状态提示，改在 ⋯ 菜单里以文字列出。 */
     conversationTrimmed: Pair<Int, Int>? = null,
     conversationDowngradedProfileId: String? = null,
@@ -147,7 +162,6 @@ internal fun AgentAppShell(
                             color = topBarColor,
                             onBack = onBack,
                             onOpenConversationPane = onOpenConversationPane,
-                            onOpenCategories = onOpenCategories,
                             onNewConversation = onNewConversation,
                             onOpenTerminal = onOpenTerminal,
                             onLaunchKimiWeb = onLaunchKimiWeb,
@@ -167,13 +181,28 @@ internal fun AgentAppShell(
                 }
             },
         ) { padding ->
+            // 首页顶栏是自绘的，不参与折叠；此时再把内容接到 MiuixScrollBehavior 上，
+            // 它的 onPreScroll 会持续吞掉上滑（想把工具栏往上收却没人收），表现就是只能下滑不能上滑。
+            val contentScrollConnection = remember(currentRoute) {
+                if (currentRoute is AppRoute.Home) null else scrollBehavior.nestedScrollConnection
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .captureForTopBar(backdrop)
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    .then(
+                        if (contentScrollConnection != null) {
+                            Modifier.nestedScroll(contentScrollConnection)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
-                content(padding)
+                // 只移内容层：顶栏在 Scaffold 的 topBar 里，不在这棵子树，所以不会跟着走。
+                // 这就是「顶栏不动、会话页左移」与「整页滑出」的区别。
+                WorkspaceShiftHost(shifted = workspaceShifted) {
+                    content(padding)
+                }
             }
         }
     }
@@ -204,7 +233,15 @@ internal fun AgentAppShell(
                 onOpenCharacters = onOpenCharacters,
                 onOpenPermissions = onOpenPermissions,
                 onOpenTasks = onOpenTasks,
-                onOpenCategories = onOpenCategories,
+                onCreateCategory = onCreateCategory,
+                onRenameCategory = onRenameCategory,
+                onMoveCategory = onMoveCategory,
+                onDeleteCategoryConfirmed = onDeleteCategoryConfirmed,
+                onDropConversationToCategory = onDropConversationToCategory,
+                workspaceVisible = workspaceVisible,
+                onWorkspaceOpen = onWorkspaceOpen,
+                onWorkspaceDismiss = onWorkspaceDismiss,
+                workspaceContent = workspaceContent,
             ) {
                 pageContent()
             }
@@ -221,7 +258,6 @@ private fun AgentTopBar(
     color: Color,
     onBack: () -> Unit,
     onOpenConversationPane: () -> Unit,
-    onOpenCategories: () -> Unit,
     onNewConversation: () -> Unit,
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
@@ -248,6 +284,8 @@ private fun AgentTopBar(
                         contentDescription = stringResource(R.string.action_conversation_history),
                     )
                 }
+                // 语音播报放在会话列表右边：两者都在左起第一个位置会互相压住。
+                SpeechAutoReadToggle()
                 // 角色对话的身份标识放在顶栏左侧，点按进入角色详情；普通对话保持空标题。
                 homeCharacter?.let { character ->
                     CharacterTopBarIdentity(character = character, onClick = onOpenCharacter)
@@ -259,8 +297,6 @@ private fun AgentTopBar(
     }
     val actions: @Composable RowScope.() -> Unit = {
         if (isHome) {
-            SpeechAutoReadToggle()
-            conversationStatus?.invoke()
             // 顶栏第一排：紧挨速度/内存/工具档，放一个新建对话入口。
             IconButton(onClick = onNewConversation) {
                 Icon(
@@ -270,7 +306,6 @@ private fun AgentTopBar(
                 )
             }
             TopBarOverflowMenu(
-                onOpenCategories = onOpenCategories,
                 onNewConversation = onNewConversation,
                 onOpenTerminal = onOpenTerminal,
                 onLaunchKimiWeb = onLaunchKimiWeb,
@@ -289,6 +324,45 @@ private fun AgentTopBar(
     // 首页聊天舞台与浏览器、终端这类整屏工具页没有可驱动折叠的滚动列表，大标题会一直展开、
     // 白占一屏顶部；它们使用紧凑标题，其余二级内容页统一使用可折叠大标题。
     val compactTitle = isHome || route is AppRoute.Browser || route is AppRoute.Terminal
+    if (isHome) {
+        // 首页自绘一行：pump 两侧等权留白，胶囊才真正居中；SmallTopAppBar 的 title 只收 String，
+        // 塞不进去 Composable。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color)
+                .statusBarsPadding()
+                .height(TopBarRowHeight)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            navigationIcon()
+            Spacer(Modifier.weight(1f))
+            conversationStatus?.invoke()
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onNewConversation) {
+                Icon(
+                    imageVector = Icons.Rounded.AddComment,
+                    contentDescription = stringResource(R.string.action_new_conversation),
+                    modifier = Modifier.size(TopBarMenuIconSize),
+                )
+            }
+            TopBarOverflowMenu(
+                onNewConversation = onNewConversation,
+                onOpenTerminal = onOpenTerminal,
+                onLaunchKimiWeb = onLaunchKimiWeb,
+                kimiWebLabel = kimiWebLabel,
+                canStopKimiWeb = canStopKimiWeb,
+                onStopKimiWeb = onStopKimiWeb,
+                onRefreshKimiWeb = onRefreshKimiWeb,
+                onOpenBrowser = onOpenBrowser,
+                conversationTrimmed = conversationTrimmed,
+                conversationDowngradedProfileId = conversationDowngradedProfileId,
+                conversationCompaction = conversationCompaction,
+            )
+        }
+        return
+    }
     if (compactTitle) {
         SmallTopAppBar(
             title = titleForRoute(route),
@@ -313,13 +387,15 @@ private fun AgentTopBar(
 
 private val TopBarMenuIconSize = 20.dp
 
+/** 首页自绘顶栏的高度（与 miuix 紧凑顶栏一致）。 */
+private val TopBarRowHeight = 56.dp
+
 /**
  * 首页顶栏溢出菜单。WindowListPopup 以父布局为锚点，因此与触发按钮包在同一个 Box 中，
  * 弹层从按钮下方右对齐展开。
  */
 @Composable
 private fun TopBarOverflowMenu(
-    onOpenCategories: () -> Unit,
     onNewConversation: () -> Unit,
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
@@ -349,7 +425,6 @@ private fun TopBarOverflowMenu(
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
             val virtualEntries = rememberVirtualScreenMenuEntries()
-            val categoriesText = stringResource(R.string.sidebar_categories)
             val openTerminalText = stringResource(R.string.action_open_terminal)
             val stopKimiWebText = stringResource(R.string.capability_kimi_stop)
             val openBrowserText = stringResource(R.string.action_open_browser)
@@ -374,18 +449,6 @@ private fun TopBarOverflowMenu(
                         ),
                     )
                 }
-                add(
-                    DropdownItem(
-                        text = categoriesText,
-                        icon = { modifier ->
-                            Icon(
-                                imageVector = Icons.Rounded.Folder,
-                                contentDescription = null,
-                                modifier = modifier.size(TopBarMenuIconSize),
-                            )
-                        },
-                    ),
-                )
                 add(
                     DropdownItem(
                         text = openTerminalText,
@@ -448,11 +511,10 @@ private fun TopBarOverflowMenu(
                             val entry = virtualEntries.getOrNull(index)
                             when {
                                 entry != null -> openVirtualScreen(context, scope, entry.component)
-                                index == virtualEntries.size -> onOpenCategories()
-                                index == virtualEntries.size + 1 -> onOpenTerminal()
-                                index == virtualEntries.size + 2 -> onOpenBrowser()
+                                index == virtualEntries.size -> onOpenTerminal()
+                                index == virtualEntries.size + 1 -> onOpenBrowser()
                                 // 末项只在真的存在「停止 Kimi」时才对应它；更靠后的状态信息行点了只关菜单。
-                                index == virtualEntries.size + 3 && canStopKimiWeb -> onStopKimiWeb()
+                                index == virtualEntries.size + 2 && canStopKimiWeb -> onStopKimiWeb()
                                 else -> Unit
                             }
                         },

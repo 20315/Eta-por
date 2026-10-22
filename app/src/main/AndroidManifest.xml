@@ -48,6 +48,10 @@
     <uses-permission android:name="io.github.mangi.eta.permission.CONTROL_ACCESSIBILITY_PROTECTION" />
 
     <queries>
+        <!-- MT2 管理器：targetSdk 37 有包可见性限制，不声明就 getPackageInfo 直接抛异常，
+             表现出来是「没有安装 MT2 管理器」。 -->
+        <package android:name="bin.mt.plus" />
+        <package android:name="bin.mt.plus.canary" />
         <package android:name="com.vivo.ai.copilot" />
         <package android:name="com.google.android.googlequicksearchbox" />
         <intent>

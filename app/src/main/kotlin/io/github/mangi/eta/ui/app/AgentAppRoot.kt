@@ -11,6 +11,21 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.zIndex
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,6 +104,7 @@ import io.github.mangi.eta.ui.screens.terminal.LinuxEnvironmentScreen
 import io.github.mangi.eta.ui.screens.terminal.LinuxFilesScreen
 import io.github.mangi.eta.ui.screens.terminal.SharedFoldersScreen
 import io.github.mangi.eta.ui.screens.terminal.TerminalEntryScreen
+import io.github.mangi.eta.ui.screens.terminal.WorkspaceBrowserSheet
 import io.github.mangi.eta.ui.screens.terminal.WorkspaceScreen
 import io.github.mangi.eta.ui.screens.tools.AgentToolsScreen
 import io.github.mangi.eta.ui.voice.SpeechOssScreen
@@ -202,6 +218,8 @@ fun AgentAppRoot(
     }
 
     var conversationPaneOpen by remember { mutableStateOf(false) }
+    // 工作区文件面板：顶栏以下的内容左移、面板从右滑入，顶栏那一行保持原样。
+    var workspaceSheetOpen by remember { mutableStateOf(false) }
     var conversationNavigatorOpen by remember { mutableStateOf(false) }
     // 工具与技能面板的数据：改成「打开时主动读一次」，不依赖 Flow 的首次发射，
     // 也不怕读取失败时静默为空——面板每次打开都会重新拉。
@@ -354,6 +372,8 @@ fun AgentAppRoot(
         }
     }
 
+    // 标 @Composable：函数体里要读 WindowInsets（只读源）并挂工作区面板，
+    // 都不是普通函数能做的。调用点都在 NavDisplay 的 entry lambda 里，本来就是 Composable 上下文。
     @Composable
     fun RoutedShell(
         route: AppRoute,
@@ -366,7 +386,29 @@ fun AgentAppRoot(
             isConversationPaneOpen = conversationPaneOpen,
             conversationStatus = {
                 io.github.mangi.eta.ui.components.ConversationStatusCapsules(
-                    agentState.modelPickerState.selectedModel,
+                    model = agentState.modelPickerState.selectedModel,
+                    onOpenWorkspace = {
+                        // 会话列表和工作区都浮在对话页之上，同时开会重叠；
+                        // 按「左列表 / 中对话 / 右工作区」的层次，开右边的先把左边的收起。
+                        conversationPaneOpen = false
+                        workspaceSheetOpen = true
+                    },
+                    workspaceActive = workspaceSheetOpen,
+                    onCloseWorkspace = { workspaceSheetOpen = false },
+                )
+            },
+            workspaceShifted = workspaceSheetOpen,
+            workspaceVisible = workspaceSheetOpen,
+            onWorkspaceOpen = {
+                conversationPaneOpen = false
+                workspaceSheetOpen = true
+            },
+            onWorkspaceDismiss = { workspaceSheetOpen = false },
+            workspaceContent = {
+                WorkspaceBrowserSheet(
+                    visible = true,
+                    topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
+                    onDismiss = { workspaceSheetOpen = false },
                 )
             },
             conversationTrimmed = agentState.historyTrimNotice,
@@ -378,7 +420,11 @@ fun AgentAppRoot(
                     it to io.github.mangi.eta.agent.model.AgentContextPolicy.MAX_COMPACTION_ROUNDS
                 },
             onBack = { popRoute() },
-            onOpenConversationPane = { conversationPaneOpen = true },
+            onOpenConversationPane = {
+                // 反向同理：开左侧列表时把右侧工作区收起，避免两层叠在一起。
+                workspaceSheetOpen = false
+                conversationPaneOpen = true
+            },
             onDismissConversationPane = { conversationPaneOpen = false },
             onSearchConversations = { query -> agentState.updateSearchQuery(query) },
             onNewConversation = { createConversation() },
@@ -445,8 +491,14 @@ fun AgentAppRoot(
                 agentState.homeState.roleplay?.let { pushRoute(AppRoute.CharacterDetail(it.characterId)) }
             },
             onOpenTasks = { pushRoute(AppRoute.Tasks) },
-            onOpenCategories = { pushRoute(AppRoute.ConversationCategories) },
+            onCreateCategory = { name -> agentState.createConversationCategory(name) },
+            onRenameCategory = { id, name -> agentState.renameConversationCategory(id, name) },
+            onMoveCategory = { id, delta -> agentState.moveConversationCategory(id, delta) },
+            onDeleteCategoryConfirmed = { id -> agentState.deleteConversationCategory(id) },
             onMoveToCategory = { conversation -> categoryMoveTarget = conversation },
+            onDropConversationToCategory = { conversation, categoryId ->
+                agentState.setConversationCategory(conversation.id, categoryId)
+            },
         ) { padding ->
             Box(
                 modifier = Modifier
@@ -456,6 +508,7 @@ fun AgentAppRoot(
                 content()
             }
         }
+
     }
 
     val swipeBackDirection = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
@@ -963,6 +1016,7 @@ fun AgentAppRoot(
             }
         }
     }
+
 
     characterStore.notice?.let { notice ->
         WindowDialog(

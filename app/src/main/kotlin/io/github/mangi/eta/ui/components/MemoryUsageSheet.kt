@@ -1,19 +1,9 @@
 package io.github.mangi.eta.ui.components
-
 import android.content.pm.ApplicationInfo
 import android.os.Process
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,21 +27,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.spring
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.MemoryProcessProbe
 import kotlinx.coroutines.Dispatchers
@@ -66,122 +46,22 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 内存面板：概览 + 按应用聚合的占用排行 + Eta 自己起的后台任务。
  *
- * 弹出方式跟入口对齐：从输入框右上角那个「内存 N%」的位置**放大**出现，
- * 不再从屏幕底部滑上来——入口在上方、面板从下方冒出会显得脱节。
- * 关闭时反向缩回同一角，视线始终落在原处。
+ * 弹出动效不在本文件里另写一套：直接交给 [CornerScaleDialog]，
+ * 与输入框右上角同一行的 MCP / 技能面板、以及对话页右上角 ⋯ 菜单共用同一条进度轨道
+ * （spring 缩放 + 底边 clip-reveal + 同色遮罩）。
  */
 @Composable
 internal fun MemoryUsageSheet(show: Boolean, onDismiss: () -> Unit) {
-    if (!show) return
-    val scope = rememberCoroutineScope()
-    val scale = remember { Animatable(MemorySheetInitialScale) }
-    val scrimAlpha = remember { Animatable(0f) }
-    // 卡片自己也要能淡入淡出：0.12 倍时内容糊成一团，先透明再显示更干净。
-    val cardAlpha = remember { Animatable(0f) }
-    var closing by remember { mutableStateOf(false) }
-
-    /**
-     * 关闭：卡片缩回原处、遮罩同步淡掉，动画播完才真正销毁 Dialog。
-     * 之前是父级置 show=false 直接砍掉，退场等于硬切，才显得「从哪来回哪去」不成立。
-     */
-    fun close() {
-        if (closing) return
-        closing = true
-        scope.launch {
-            launch {
-                scrimAlpha.animateTo(0f, tween(MemorySheetExitMs, easing = FastOutLinearInEasing))
-            }
-            launch {
-                // 透明度先收工：缩到最小时已经看不见，不会在那儿「停一下」。
-                cardAlpha.animateTo(0f, tween(MemorySheetCardFadeOutMs, easing = LinearOutSlowInEasing))
-            }
-            // 退场先慢后快，最后的收缩干净利落。
-            scale.animateTo(
-                MemorySheetInitialScale,
-                tween(MemorySheetExitMs, easing = FastOutLinearInEasing),
-            )
-            onDismiss()
-        }
-    }
-
-    Dialog(
-        onDismissRequest = { close() },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnClickOutside = true,
-        ),
-    ) {
-        val density = LocalDensity.current
-        val container = LocalWindowInfo.current.containerSize
-        val sheetWidth = with(density) { (container.width * 0.92f).toDp() }
-        val sheetHeight = with(density) { (container.height * 0.62f).toDp() }
-
-        // 打开：遮罩垫底，卡片先在前 80ms 淡进来（避开 0.12 倍时糊成一团的那一下），
-        // 再以先快后慢的曲线放大落定。
-        LaunchedEffect(Unit) {
-            launch {
-                scrimAlpha.animateTo(1f, tween(MemorySheetEnterMs, easing = LinearOutSlowInEasing))
-            }
-            launch {
-                cardAlpha.animateTo(1f, tween(MemorySheetCardFadeInMs, easing = LinearOutSlowInEasing))
-            }
-            scale.animateTo(1f, tween(MemorySheetEnterMs, easing = LinearOutSlowInEasing))
-        }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = scrimAlpha.value }
-                    .background(Color.Black.copy(alpha = MemorySheetScrimAlpha))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { close() },
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = MemorySheetBottomPadding)
-                    .graphicsLayer {
-                        scaleX = scale.value
-                        scaleY = scale.value
-                        alpha = cardAlpha.value
-                        // 缩放的锚点就是卡片右下角，也就是输入框右上角那个入口的位置。
-                        transformOrigin = TransformOrigin(1f, 1f)
-                    },
-            ) {
-                MemorySheetCard(
-                    width = sheetWidth,
-                    height = sheetHeight,
-                    onDismiss = { close() },
-                )
-            }
-        }
+    CornerScaleDialog(
+        show = show,
+        onDismiss = onDismiss,
+    ) { requestClose ->
+        MemorySheetCard(onDismiss = requestClose)
     }
 }
 
-/** 起点就是「内存 N%」那行小字的尺寸（卡片约 378dp 宽 × 0.12 ≈ 45dp），缩放锚点也在它那一角。 */
-private const val MemorySheetInitialScale = 0.12f
-private const val MemorySheetEnterMs = 340
-private const val MemorySheetExitMs = 340
-/** 前 80ms 只做淡入，避免 0.12 倍时内容糊成一团被看见。 */
-private const val MemorySheetCardFadeInMs = 80
-/** 与缩放同时收工；配合「先快后慢」的曲线，末尾缩小时已经接近透明，看不到停顿。 */
-private const val MemorySheetCardFadeOutMs = 340
-private const val MemorySheetScrimAlpha = 0.32f
-
-/** 卡片距屏幕底部留出的高度：大致等于输入框卡片高度，让面板贴着入口那一角。 */
-private val MemorySheetBottomPadding = 104.dp
-
 @Composable
-private fun MemorySheetCard(
-    width: androidx.compose.ui.unit.Dp,
-    height: androidx.compose.ui.unit.Dp,
-    onDismiss: () -> Unit,
-) {
+private fun MemorySheetCard(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val selfPid = remember { Process.myPid() }
@@ -243,9 +123,7 @@ private fun MemorySheetCard(
 
     Column(
         modifier = Modifier
-            .width(width)
-            .height(height)
-            .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+            .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

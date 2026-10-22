@@ -1,146 +1,110 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.window.WindowListPopup
 
 /**
- * 从右下角（输入框右上角）缩放出来的通用弹层。
+ * 输入框右上角那三个入口（MCP / 技能 / 内存）共用的弹层。
  *
- * 内存面板、工具与技能面板共用这一套：起点很小、先淡入再放大，
- * 关闭时缩回同一角、透明度与缩放同步收工，做到「从哪来回哪去」。
+ * 动画不在这里实现：用对话页右上角 ⋯ 菜单用的同一个组件 `WindowListPopup`，
+ * 进场、退场、返回、遮罩全部由 miuix 的 `ListPopupLayout` / `ListPopupContent` 驱动。
+ *
+ * 位置按「它属于输入框」来定：
+ * - 右缘对齐锚点（输入框卡片）右缘，左缘比卡片再收 24dp，不铺到接近全宽；
+ * - 底边压在锚点上方 8dp；上方放不下才翻到下方；
+ * - 宽度 = 卡片宽 − 24dp；高度沿用 [heightFraction]，超出滚动。
  */
 @Composable
 internal fun CornerScaleDialog(
     show: Boolean,
     onDismiss: () -> Unit,
-    widthFraction: Float = 0.92f,
+    @Suppress("UNUSED_PARAMETER") widthFraction: Float = 0.92f,
     heightFraction: Float = 0.62f,
-    bottomPadding: Dp = CornerDialogBottomPadding,
+    @Suppress("UNUSED_PARAMETER") bottomPadding: Dp = CornerDialogBottomPadding,
     content: @Composable (requestClose: () -> Unit) -> Unit,
 ) {
-    if (!show) return
-    val scope = rememberCoroutineScope()
-    val scale = remember { Animatable(CornerDialogInitialScale) }
-    val scrimAlpha = remember { Animatable(0f) }
-    val cardAlpha = remember { Animatable(0f) }
-    var closing by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val container = LocalWindowInfo.current.containerSize
+    // 卡片两侧各留 16dp 再收 24dp，比输入框窄一档；不用百分比，避免窄屏/宽屏都贴着屏幕边。
+    val windowWidth = with(density) { container.width.toDp() }
+    val popupWidth = (windowWidth - 56.dp).coerceAtLeast(240.dp).coerceAtMost(windowWidth - 24.dp)
+    val popupHeight = with(density) { (container.height * heightFraction).toDp() }
+    val anchorGap = with(density) { 8.dp.roundToPx() }
 
-    fun close() {
-        if (closing) return
-        closing = true
-        scope.launch {
-            launch {
-                scrimAlpha.animateTo(0f, tween(CornerDialogExitMs, easing = FastOutLinearInEasing))
+    val positionProvider = remember(anchorGap) {
+        object : PopupPositionProvider {
+            override fun getMargins(): PaddingValues = PaddingValues(0.dp)
+
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowBounds: IntRect,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+                popupMargin: IntRect,
+                alignment: PopupPositionProvider.Align,
+            ): IntOffset {
+                // 右缘贴住锚点右缘（这一行入口在最右），不按窗口居中。
+                val maxX = (windowBounds.right - popupContentSize.width).coerceAtLeast(windowBounds.left)
+                val x = (anchorBounds.right - popupContentSize.width).coerceIn(windowBounds.left, maxX)
+                val above = anchorBounds.top - popupContentSize.height - anchorGap
+                val below = anchorBounds.bottom + anchorGap
+                val y = when {
+                    above >= windowBounds.top -> above
+                    below + popupContentSize.height <= windowBounds.bottom -> below
+                    else -> (windowBounds.bottom - popupContentSize.height).coerceAtLeast(windowBounds.top)
+                }
+                return IntOffset(x, y)
             }
-            launch {
-                cardAlpha.animateTo(0f, tween(CornerDialogExitMs, easing = LinearOutSlowInEasing))
-            }
-            scale.animateTo(
-                CornerDialogInitialScale,
-                tween(CornerDialogExitMs, easing = FastOutLinearInEasing),
-            )
-            onDismiss()
         }
     }
 
-    Dialog(
-        onDismissRequest = { close() },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnClickOutside = true,
-        ),
+    // 弹层自己维护「请求关闭 → 播完退场 → 真正消失」的过程，外部 show 只负责进出。
+    var visible by remember { mutableStateOf(show) }
+    LaunchedEffect(show) { visible = show }
+
+    WindowListPopup(
+        show = visible,
+        popupPositionProvider = positionProvider,
+        alignment = PopupPositionProvider.Align.End,
+        onDismissRequest = {
+            if (visible) visible = false
+            onDismiss()
+        },
+        minWidth = popupWidth,
     ) {
-        val density = LocalDensity.current
-        val container = LocalWindowInfo.current.containerSize
-        val width = with(density) { (container.width * widthFraction).toDp() }
-        val height = with(density) { (container.height * heightFraction).toDp() }
-
-        LaunchedEffect(Unit) {
-            launch {
-                scrimAlpha.animateTo(1f, tween(CornerDialogEnterMs, easing = LinearOutSlowInEasing))
-            }
-            launch {
-                cardAlpha.animateTo(1f, tween(CornerDialogCardFadeInMs, easing = LinearOutSlowInEasing))
-            }
-            scale.animateTo(1f, tween(CornerDialogEnterMs, easing = LinearOutSlowInEasing))
-        }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = scrimAlpha.value }
-                    .background(Color.Black.copy(alpha = CornerDialogScrimAlpha))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { close() },
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = bottomPadding)
-                    .graphicsLayer {
-                        scaleX = scale.value
-                        scaleY = scale.value
-                        alpha = cardAlpha.value
-                        transformOrigin = TransformOrigin(1f, 1f)
-                    },
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(width)
-                        .height(height)
-                        .background(MiuixTheme.colorScheme.surface, RoundedCornerShape(24.dp)),
-                ) {
-                    content { close() }
-                }
+        Box(
+            modifier = Modifier
+                .width(popupWidth)
+                .height(popupHeight),
+        ) {
+            content {
+                if (visible) visible = false
+                onDismiss()
             }
         }
     }
 }
 
-private const val CornerDialogInitialScale = 0.12f
-private const val CornerDialogEnterMs = 340
-private const val CornerDialogExitMs = 340
-private const val CornerDialogCardFadeInMs = 80
-private const val CornerDialogScrimAlpha = 0.32f
-
-/** 卡片距屏幕底部留出的高度：大致等于输入框高度，让面板贴着入口那一角。 */
+/** 旧实现里卡片距屏幕底部的留白；现在位置交给弹层定位器，保留给调用方兼容。 */
 internal val CornerDialogBottomPadding = 104.dp
 
 /** 面板内容区统一高度：由调用方决定，这里只给个默认值参考。 */

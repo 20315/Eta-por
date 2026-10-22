@@ -1534,6 +1534,8 @@
   <string name="conversation_downgrade_capsule">已自动降档：%1$s</string>
   <string name="conversation_downgrade_description">上次请求上下文超限，已自动改用「%1$s」工具档重试；可在顶栏「工具档」里手动调整。</string>
   <string name="conversation_category_move">移到分类</string>
+  <string name="conversation_category_move_up">上移</string>
+  <string name="conversation_category_move_down">下移</string>
   <string name="conversation_category_uncategorized">未分类</string>
   <string name="conversation_category_count">%1$d 个会话</string>
     <string name="conversation_category_name_hint">分类名称</string>
@@ -1870,4 +1872,31 @@
 <string name="memory_discard">放弃</string>
 <string name="chat_character_input_hint">对%1$s说点什么…</string>
 <string name="chat_character_typing">%1$s 正在回复…</string>
+    <!-- 工作区文件浏览器 -->
+    <string name="workspace_browser_title">工作区</string>
+    <string name="workspace_browser_refresh">刷新</string>
+    <string name="workspace_browser_open_with">打开方式</string>
+    <string name="workspace_browser_root">根目录</string>
+    <string name="workspace_browser_empty">这个目录是空的</string>
+    <string name="workspace_browser_open_failed">没有找到能打开这个文件的应用</string>
+    <string name="workspace_browser_copy_path">复制路径</string>
+    <string name="workspace_browser_path_copied">已复制路径</string>
+    <string name="workspace_browser_preview">预览</string>
+    <string name="workspace_browser_read_failed">读取文件失败</string>
+    <string name="workspace_browser_too_large">文件太大，无法预览</string>
+    <string name="workspace_browser_choose_app">选择应用</string>
+    <string name="workspace_browser_open_in_mt">在 MT2 管理器中打开</string>
+    <string name="workspace_browser_open_with_auto">自动（MT2 优先）</string>
+    <string name="workspace_browser_mt_missing">没有安装 MT2 管理器</string>
+    <string name="workspace_browser_mt_failed">MT2 管理器无法打开这个文件</string>
+    <string name="workspace_browser_default_app">默认：%1$s</string>
+    <string name="workspace_browser_binary">二进制文件</string>
+    <string name="workspace_browser_binary_summary">%1$s · 用其他应用打开</string>
+    <string name="workspace_browser_markdown">Markdown</string>
+    <string name="workspace_browser_markdown_summary">%1$s · 点按预览和编辑</string>
+    <string name="workspace_browser_folder">文件夹</string>
+    <string name="workspace_browser_folder_summary">%1$s 项</string>
+    <string name="workspace_browser_expand">展开</string>
+    <string name="workspace_browser_collapse">收起</string>
+    <string name="workspace_browser_up">上一级</string>
 </resources>

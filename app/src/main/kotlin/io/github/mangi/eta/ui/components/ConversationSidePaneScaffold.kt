@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.AbsoluteAlignment
@@ -50,8 +53,12 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -90,14 +97,24 @@ fun ConversationSidePaneScaffold(
     onOpenCharacters: () -> Unit,
     onOpenPermissions: () -> Unit,
     onOpenTasks: () -> Unit,
-    onOpenCategories: () -> Unit,
+    onCreateCategory: (String) -> Unit,
+    onRenameCategory: (String, String) -> Unit,
+    onMoveCategory: (String, Int) -> Unit,
+    onDeleteCategoryConfirmed: (String) -> Unit,
+    /** 拖放落点：目标分组 id，null 表示移出分组。 */
+    onDropConversationToCategory: ((ConversationSummaryUi, String?) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    workspaceVisible: Boolean = false,
+    onWorkspaceOpen: () -> Unit = {},
+    onWorkspaceDismiss: () -> Unit = {},
+    workspaceContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val sceneLifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val navigationEventState = rememberNavigationEventState(NavigationEventInfo.None)
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val screenWidthPx = constraints.maxWidth.toFloat()
         val density = LocalDensity.current
         val paneWidth = minOf(maxWidth * ConversationPaneMetrics.PaneWidthFraction, ConversationPaneMetrics.PaneMaxWidth)
         val paneWidthPx = with(density) { paneWidth.toPx() }
@@ -105,6 +122,9 @@ fun ConversationSidePaneScaffold(
             DraggableAnchors {
                 ConversationPaneAnchor.Closed at 0f
                 ConversationPaneAnchor.Open at paneWidthPx
+                // 负向锚点：同一个 anchoredDraggable 向左拖就能到工作区，
+                // 不需要第二套手势，也就不会和右滑/系统返回抢事件。
+                ConversationPaneAnchor.Workspace at -screenWidthPx
             }
         }
         val paneDragState = remember {
@@ -127,6 +147,33 @@ fun ConversationSidePaneScaffold(
             },
             animationSpec = settleAnimation,
         )
+        // 工作区：完全复用同一套状态。吸附到 Workspace 锚点即算打开，回到 Closed 即关闭。
+        // 不用第二套手势，也不用自己判方向——拖动方向由锚点位置决定。
+        val currentOnWorkspaceOpen by rememberUpdatedState(onWorkspaceOpen)
+        val currentOnWorkspaceDismiss by rememberUpdatedState(onWorkspaceDismiss)
+        // 高亮判定用「过半」，与吸附阈值一致：往左拉过屏宽一半就算进了工作区，
+        // 回程再过半才回到对话区。这样高亮和最终落点不会互相矛盾。
+        LaunchedEffect(paneDragState, screenWidthPx) {
+            snapshotFlow { paneDragState.offset }
+                .filter { !it.isNaN() }
+                .map { it < -screenWidthPx / 2f }
+                .distinctUntilChanged()
+                .collect { inWorkspace ->
+                    if (inWorkspace) currentOnWorkspaceOpen() else currentOnWorkspaceDismiss()
+                }
+        }
+        LaunchedEffect(workspaceVisible) {
+            // 只在「不在拖动中」时才由外部开关驱动：拖动时位移归手指，
+            // 这时再 animateTo 会和手势抢，表现就是高亮/面板慢半拍。
+            val settled = paneDragState.settledValue
+            val settledPos = runCatching { paneDragState.anchors.positionOf(settled) }.getOrNull()
+            val dragging = settledPos != null && abs(paneDragState.offset - settledPos) > 0.5f
+            if (!dragging) {
+                paneDragState.animateTo(
+                    if (workspaceVisible) ConversationPaneAnchor.Workspace else ConversationPaneAnchor.Closed,
+                )
+            }
+        }
         val currentVisible by rememberUpdatedState(visible)
         val currentOnOpen by rememberUpdatedState(onOpen)
         val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -237,6 +284,7 @@ fun ConversationSidePaneScaffold(
                         onConversationSelected = onConversationSelected,
                         onConversationRename = onConversationRename,
                         onMoveToCategory = onMoveToCategory,
+                        onDropConversationToCategory = onDropConversationToCategory,
                         onConversationExport = onConversationExport,
                         onConversationDelete = onConversationDelete,
                         onConversationPin = onConversationPin,
@@ -250,7 +298,10 @@ fun ConversationSidePaneScaffold(
                         onOpenCharacters = onOpenCharacters,
                         onOpenPermissions = onOpenPermissions,
                         onOpenTasks = onOpenTasks,
-                        onOpenCategories = onOpenCategories,
+                        onCreateCategory = onCreateCategory,
+                        onRenameCategory = onRenameCategory,
+                        onMoveCategory = onMoveCategory,
+                        onDeleteCategoryConfirmed = onDeleteCategoryConfirmed,
                         modifier = Modifier
                             .focusProperties { onEnter = { if (!isRevealed) cancelFocusChange() } }
                             .focusGroup()
@@ -301,6 +352,17 @@ fun ConversationSidePaneScaffold(
                     panel.placeWithLayer(offset - panel.width, 0)
                     page.placeWithLayer(offset, 0)
                 }
+            }
+
+            // 工作区层：位置 = 当前位移 + 屏宽，所以 offset 走到 -屏宽时它正好铺满。
+            if (workspaceContent != null) {
+                val raw = paneDragState.offset
+                val wsOffset = if (raw.isNaN()) 0f else raw
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset((wsOffset + screenWidthPx).roundToInt(), 0) }
+                        .fillMaxSize(),
+                ) { workspaceContent() }
             }
         }
     }
