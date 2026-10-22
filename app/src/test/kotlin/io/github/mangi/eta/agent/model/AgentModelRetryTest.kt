@@ -121,7 +121,7 @@ class AgentModelRetryTest {
         onEvent: (AgentEvent) -> Unit = {},
     ) = retry.complete(
         initialRound = 1,
-        request = ProviderRequest(
+        initialRequest = ProviderRequest(
             AgentModelClient.ModelConfig(baseUrl = "https://example.invalid", apiKey = "test-key", model = "test-model", systemPrompt = ""),
             JSONArray(), JSONArray(),
         ),
