@@ -143,11 +143,13 @@ Root 探测在 IO 线程执行：存在 `su` 时首次自动请求一次，最�
 
 ## 网页搜索与正文读取
 
-本地 `web_search`、`fetch_url` 与 `browser_use` 共用既有 `browserTools` 权限；Responses 托管搜索启用时，本地同名搜索不再向模型公开，正文读取与浏览器仍可用。设置文案为“启用网页搜索、读取与浏览器”，持久化 key 仍是 `agent_browser_tools`，不新增搜索服务配置、凭据或 IPC 字段。关闭后目录不公开这三个本地工具，执行入口也逐次复查开关。它们无需 Root 或无障碍服务；模型请求、MCP 和 Provider 托管搜索仍走各自的配置与授权链路。
+本地 `web_search`、`fetch_url` 与 `browser_use` 共用既有 `browserTools` 权限；Responses 托管搜索启用时，本地同名搜索不再向模型公开，正文读取与浏览器仍可用。设置文案为“启用网页搜索、读取与浏览器”，持久化 key 仍是 `agent_browser_tools`；关闭后目录不公开这三个本地工具，执行入口也逐次复查开关。它们无需 Root 或无障碍服务；模型请求、MCP 和 Provider 托管搜索仍走各自的配置与授权链路。
 
-`web_search` 通过 `PublicWebSearch` 请求 DuckDuckGo 官方公开 HTML 搜索入口，不需要额外 API Key。当前只解析首屏结果，`max_results` 默认为 5、最多 10；返回目标站点的标题、原始链接和摘要，去掉搜索跳转包装并去重。结果携带 `scope=first_page`、采集时间、截断原因和跳过数量，不能把首屏结果当作完整搜索范围。验证挑战、HTTP 限流、编码失败、过大响应或无法识别的页面结构返回明确错误；只有识别到明确的无结果提示时才返回成功的空列表。公开站点可用性及页面结构会变化，工具不绕过人工验证。
+`web_search` 与 `fetch_url` 保持统一的模型工具合同，底层执行后端可在“网页搜索与读取”设置中分别选择 **内置默认**、**DeepSeek**（`POST /v1/tools/search` 与 `POST /v1/tools/fetch`）或 **自定义接口**（支持 GET/POST、请求模板与响应 JSON 路径映射）。非敏感设置保存在 `SettingsDataStore`，独立 API Key 通过 AndroidKeyStore `AES/GCM/NoPadding` 加密保存在 `eta_web_tools_secrets`；当选择 DeepSeek 且未单独填写密钥时，自动复用模型提供商中已配置的 DeepSeek API Key 与服务地址。
 
-`fetch_url` 使用匿名 HTTP GET，HTML 解析仅处理已下载文本，不执行 JavaScript，也不加载页面子资源。除 HTML/XHTML 外，还接受 `text/*`、Markdown、JSON 与 `application/*+json`；二进制或不支持的类型明确失败。字符编码按 BOM、响应头及可用的 HTML 声明判断；正文发生替换解码时标记 `decoding_lossy`，搜索结果则拒绝不可靠的解码。HTML 会移除脚本等非正文内容并提取有限链接；它不继承共享 WebView 的 Cookie 或登录状态，需要动态渲染、登录、表单或其他网页交互时使用 `browser_use`。
+`web_search` 默认通过 `PublicWebSearch` 请求 DuckDuckGo 公开 HTML 搜索入口（`scope=first_page`），也可切换至 DeepSeek Search 或自定义搜索接口（`scope=api`）。`max_results` 默认为 5、最多 10；返回目标站点的标题、原始链接和摘要（DeepSeek 后端额外附带长摘要 `summary`、站点名称、发布时间、权威度与排序分），去掉跳转包装并去重。结果携带采集时间、截断原因和跳过数量；验证挑战、鉴权或余额失败、HTTP 限流、编码失败、过大响应或无法识别的响应结构返回明确错误。
+
+`fetch_url` 支持内置本地匿名 HTTP GET、DeepSeek Fetch（返回 Markdown）或自定义读取接口；当配置为 DeepSeek 或自定义接口且远端抓取失败（非取消、非 URL 格式错误）时，自动回退到本地静态抓取并在结果中标记 `fallback_from`。本地 HTML 解析仅处理已下载文本，不执行 JavaScript，也不加载页面子资源；除 HTML/XHTML 外，还接受 `text/*`、Markdown、JSON 与 `application/*+json`。字符编码按 BOM、响应头及可用的 HTML 声明判断；正文发生替换解码时标记 `decoding_lossy`。它不继承共享 WebView 的 Cookie 或登录状态，需要动态渲染、登录、表单或其他网页交互时使用 `browser_use`。
 
 首次读取传 `url`，续页传返回的 `document_id` 与 `next_offset_chars`，两种来源必须且只能选择一个。分页读取同一份缓存正文，不重复 HTTP 请求，也不会混入网站随后更新的内容。快照只属于当前 run，最多保留 4 份文档且正文合计不超过 600000 字符，按最近访问情况淘汰；run 关闭会清空，失效或跨 run 的 ID 返回 `WEB_DOCUMENT_EXPIRED`。字符偏移须使用工具返回值，不能落在 Unicode 代理项对中间。`has_more` 表示缓存正文仍有下一页，`source_truncated` 表示下载或提取本身已丢失内容；读完所有页也不能消除来源截断。
 

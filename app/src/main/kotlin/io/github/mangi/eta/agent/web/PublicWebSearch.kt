@@ -7,7 +7,16 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
 
-internal data class SearchResult(val title: String, val url: String, val snippet: String)
+internal data class SearchResult(
+    val title: String,
+    val url: String,
+    val snippet: String,
+    val summary: String? = null,
+    val siteName: String? = null,
+    val date: String? = null,
+    val authority: Int? = null,
+    val rerankScore: Double? = null,
+)
 
 internal data class SearchPage(
     val provider: String,

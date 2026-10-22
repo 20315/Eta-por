@@ -24,6 +24,7 @@ import io.github.mangi.eta.hook.vivo.VivoHandoff
 import io.github.mangi.eta.data.model.AppearanceThemeMode
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.app.AgentAppRoot
+import io.github.mangi.eta.ui.components.ProvideEtaTextToolbar
 import io.github.mangi.eta.ui.app.ArchivedConversationRequest
 import io.github.mangi.eta.ui.app.AgentAppTheme
 import io.github.mangi.eta.ui.app.PredictiveBackController
@@ -72,6 +73,7 @@ class MainActivity : ComponentActivity() {
                     applyInterfaceScale = true,
                     onResolvedDarkModeChange = ::updateSystemBars,
                 ) {
+                  ProvideEtaTextToolbar {
                     AgentAppRoot(
                         assistantConversationKey = assistantConversationKey,
                         assistantConversationSource = assistantConversationSource,
@@ -91,6 +93,7 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                     io.github.mangi.eta.agent.display.VirtualScreenAppConflictDialog()
+                  }
                 }
             }
             contentReady = true

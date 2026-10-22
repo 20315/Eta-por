@@ -110,6 +110,7 @@ import io.github.mangi.eta.ui.screens.terminal.TerminalEntryScreen
 import io.github.mangi.eta.ui.screens.terminal.WorkspaceBrowserSheet
 import io.github.mangi.eta.ui.screens.terminal.WorkspaceScreen
 import io.github.mangi.eta.ui.screens.tools.AgentToolsScreen
+import io.github.mangi.eta.ui.screens.tools.WebToolsSettingsScreen
 import io.github.mangi.eta.ui.voice.SpeechOssScreen
 import io.github.mangi.eta.ui.voice.SpeechRecognitionScreen
 import io.github.mangi.eta.ui.voice.SpeechSettingsScreen
@@ -671,11 +672,15 @@ fun AgentAppRoot(
                         when (action) {
                             AgentToolsAction.NavigateBack -> popRoute()
                             AgentToolsAction.OpenBrowser -> pushRoute(AppRoute.Browser)
+                            AgentToolsAction.OpenWebToolsSettings -> pushRoute(AppRoute.WebToolsSettings)
                             AgentToolsAction.OpenEnhancements -> pushRoute(AppRoute.SystemEnhance)
                             AgentToolsAction.OpenPermissions -> pushRoute(AppRoute.Permissions)
                         }
                     },
                 )
+            }
+            entry<AppRoute.WebToolsSettings>(swipeDismiss = swipeDismiss) {
+                WebToolsSettingsScreen(onBack = ::popRoute)
             }
             entry<AppRoute.Skills>(swipeDismiss = swipeDismiss) {
                 LaunchedEffect(Unit) {
