@@ -44,8 +44,10 @@ android {
         versionCode = 2026102228
         versionName = "3.3.1"
         testInstrumentationRunner = "io.github.mangi.eta.validation.DeviceValidationRunner"
+
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // 同时过滤本地与依赖 AAR 的原生库，确保 APK 仅包含 ARM64。
+            abiFilters += "arm64-v8a"
         }
     }
 
