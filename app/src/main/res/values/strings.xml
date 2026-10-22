@@ -1975,4 +1975,11 @@
     <string name="web_tools_load_failed">无法读取网页工具设置，请返回重试</string>
     <string name="web_tools_credentials_lost">网页工具凭据无法解密，请重新填写并保存</string>
     <string name="text_action_cut">剪切</string>
+    <string name="chat_queue_status">排队中</string>
+    <string name="chat_queue_status_count">排队中 · %1$d</string>
+    <string name="chat_queue_interrupting">插话中</string>
+    <string name="chat_queue_steer_now">立即插话发送</string>
+    <string name="chat_queue_remove">移除排队消息</string>
+    <string name="chat_queue_images_only">[%1$d 张图片]</string>
+    <string name="chat_queue_files_only">[%1$d 个文件]</string>
 </resources>

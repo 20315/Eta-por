@@ -8,16 +8,20 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,10 +72,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
@@ -90,9 +96,10 @@ import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.MessageReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
-import io.github.mangi.eta.ui.model.ToolAccessUiState
-import io.github.mangi.eta.ui.model.ToolToggleItem
+import io.github.mangi.eta.ui.model.QueuedMessageUi
 import io.github.mangi.eta.ui.model.filterAgentCommands
+import io.github.mangi.eta.ui.model.ToolToggleItem
+import io.github.mangi.eta.ui.model.ToolAccessUiState
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.Icon
@@ -119,7 +126,7 @@ private val SpeedCapsuleMinWidth = 72.dp
 /**
  * Agent 输入器始终保持同一空间结构，聚焦、输入和执行过程只改变状态，不搬动操作入口。
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun AgentChatInputBar(
     input: String,
@@ -134,6 +141,8 @@ internal fun AgentChatInputBar(
     availableReasoningEfforts: List<ReasoningEffort>,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
+    queuedMessages: List<QueuedMessageUi> = emptyList(),
+    inputSyncVersion: Int = 0,
     isEditingMessage: Boolean,
     editHasLaterTurns: Boolean,
     preserveFollowingMessages: Boolean,
@@ -142,6 +151,10 @@ internal fun AgentChatInputBar(
     canCompactContext: Boolean,
     onModelSelected: (String) -> Unit,
     onSubmit: (String) -> Unit,
+    onInterruptAndSubmit: (String) -> Unit = onSubmit,
+    onSteerQueuedMessage: (String) -> Unit = {},
+    onRecallQueuedMessage: (String, String) -> Unit = { _, _ -> },
+    onRemoveQueuedMessage: (String) -> Unit = {},
     onStop: () -> Unit,
     isPaused: Boolean = false,
     onPause: () -> Unit = {},
@@ -169,6 +182,7 @@ internal fun AgentChatInputBar(
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
+    val hapticFeedback = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
     val textFieldState = rememberTextFieldState(
         initialText = input.ifEmpty { draftKey?.let(AgentInputDrafts::get).orEmpty() },
@@ -252,8 +266,9 @@ internal fun AgentChatInputBar(
             selection = TextRange(range.min + recognized.length)
         }
     }
-    LaunchedEffect(isStreaming, isEditingMessage, recognitionEnabled) { dictation.cancel() }
+    LaunchedEffect(isEditingMessage, recognitionEnabled) { dictation.cancel() }
     var wasEditingMessage by remember { mutableStateOf(isEditingMessage) }
+    var syncedVersion by remember { mutableIntStateOf(inputSyncVersion) }
     val canSend = textFieldState.text.isNotBlank() ||
         pendingImages.isNotEmpty() ||
         pendingFileReferences.isNotEmpty()
@@ -265,24 +280,19 @@ internal fun AgentChatInputBar(
     }.minus(ChatInputPopupMargin * 2)
         .coerceAtLeast(ListPopupDefaults.MinPopupHeight)
 
-    LaunchedEffect(isEditingMessage) {
-        // 编辑态由外部业务状态驱动；普通输入只保留在本地，避免每个字符把聊天舞台
+    LaunchedEffect(isEditingMessage, inputSyncVersion) {
+        // 编辑态与排队消息撤回由外部业务状态驱动；普通输入只保留在本地，避免每个字符把聊天舞台
         // 的消息流、滚动和 Markdown 一起带入重组。
-        if (isEditingMessage || wasEditingMessage) {
+        val versionChanged = inputSyncVersion != syncedVersion
+        if (isEditingMessage || wasEditingMessage || versionChanged) {
             textFieldState.setTextAndPlaceCursorAtEnd(input)
         }
-        if (isEditingMessage) {
+        if (isEditingMessage || (versionChanged && input.isNotEmpty())) {
             focusRequester.requestFocus()
             keyboard?.show()
         }
         wasEditingMessage = isEditingMessage
-    }
-
-    LaunchedEffect(isStreaming, isCompacting) {
-        if (isStreaming && !isCompacting) {
-            // 发送按钮、建议词和外部恢复都可能启动流式任务，统一清掉本地草稿。
-            textFieldState.clearText()
-        }
+        syncedVersion = inputSyncVersion
     }
 
     Column(
@@ -290,6 +300,20 @@ internal fun AgentChatInputBar(
             .fillMaxWidth(),
     ) {
         if (recognitionEnabled) SpeechInputFeedback(dictation)
+        AnimatedVisibility(
+            visible = queuedMessages.isNotEmpty(),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(150)),
+        ) {
+            AgentChatQueueStrip(
+                queuedMessages = queuedMessages,
+                isStreaming = isStreaming,
+                onSteer = onSteerQueuedMessage,
+                onRecall = { id -> onRecallQueuedMessage(id, textFieldState.text.toString()) },
+                onRemove = onRemoveQueuedMessage,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
         AnimatedVisibility(
             visible = pendingFileReferences.isNotEmpty(),
             enter = fadeIn(tween(160)),
@@ -611,7 +635,7 @@ internal fun AgentChatInputBar(
                         }
 
                         if (recognitionEnabled) {
-                            SpeechDictationButton(dictation, enabled = !isStreaming)
+                            SpeechDictationButton(dictation, enabled = !isCompacting)
                             Spacer(modifier = Modifier.width(2.dp))
                         }
 

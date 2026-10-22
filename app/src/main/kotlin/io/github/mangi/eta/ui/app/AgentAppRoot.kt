@@ -553,6 +553,10 @@ fun AgentAppRoot(
                                 AgentHomeAction.CompactContext -> agentState.compactCurrentContext()
                                 is AgentHomeAction.ModelSelected -> agentState.selectModel(action.modelId)
                                 is AgentHomeAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
+                                is AgentHomeAction.InterruptAndSubmitMessage -> { requestExecutionNotifications(); agentState.interruptAndSendCurrentMessage(action.text) }
+                                is AgentHomeAction.SteerQueuedMessage -> { requestExecutionNotifications(); agentState.steerQueuedMessage(action.id) }
+                                is AgentHomeAction.RecallQueuedMessage -> agentState.recallQueuedMessage(action.id, action.currentDraftText)
+                                is AgentHomeAction.RemoveQueuedMessage -> agentState.removeQueuedMessage(action.id)
                                 AgentHomeAction.StopRun -> agentState.stopCurrentRun()
                                 AgentHomeAction.PauseRun -> agentState.pauseCurrentRun()
                                 AgentHomeAction.ResumeRun -> agentState.resumeCurrentRun()
