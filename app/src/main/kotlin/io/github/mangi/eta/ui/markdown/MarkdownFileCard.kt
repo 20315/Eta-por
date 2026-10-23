@@ -88,6 +88,7 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.window.WindowListPopup
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -301,54 +302,26 @@ internal fun MarkdownFileDialog(
                     tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
-            IconButton(
-                onClick = { menuOpen = true },
-                minWidth = 36.dp,
-                minHeight = 36.dp,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            StaticMarkdown(
-                content = text,
-                tone = MarkdownTone.Answer,
-                codeWrap = true,
-                modifier = Modifier.fillMaxWidth(),
-                onTaskToggle = { offset ->
-                    val next = toggleTaskAt(text, offset)
-                    if (next != text) {
-                        text = next
-                        dirty = true
-                        scope.launch {
-                            val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, next) }
-                            if (error == null) {
-                                dirty = false
-                            } else {
-                                Toast.makeText(context, "自动保存失败：$error", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                },
-            )
-        }
-        }
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    minWidth = 36.dp,
+                    minHeight = 36.dp,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+                // 菜单以这个按钮为锚点弹出（贴右上角），不再以整张卡片为锚。
         // 更多菜单：与对话页一致的弹出层（WindowListPopup），不占布局、不会挤压正文
-        WindowListPopup(
-            show = menuOpen,
-            alignment = PopupPositionProvider.Align.BottomEnd,
-            onDismissRequest = { menuOpen = false },
+                WindowListPopup(
+                    show = menuOpen,
+                    popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+                    alignment = PopupPositionProvider.Align.BottomEnd,
+                    onDismissRequest = { menuOpen = false },
         ) {
             ListPopupColumn {
                 DropdownImpl(
@@ -407,6 +380,38 @@ internal fun MarkdownFileDialog(
                     },
                 )
             }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            StaticMarkdown(
+                content = text,
+                tone = MarkdownTone.Answer,
+                codeWrap = true,
+                modifier = Modifier.fillMaxWidth(),
+                onTaskToggle = { offset ->
+                    val next = toggleTaskAt(text, offset)
+                    if (next != text) {
+                        text = next
+                        dirty = true
+                        scope.launch {
+                            val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, next) }
+                            if (error == null) {
+                                dirty = false
+                            } else {
+                                Toast.makeText(context, "自动保存失败：$error", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        }
         }
         }
     }
