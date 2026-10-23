@@ -33,6 +33,8 @@ internal fun StaticMarkdown(
     highlight: IntRange? = null,
     /** 任务列表勾选回写；null 表示只读。 */
     onTaskToggle: ((Int) -> Unit)? = null,
+    /** 代码块折行自适应（预览页用），默认保持不折行。 */
+    codeWrap: Boolean = false,
 ) {
     val style = rememberMarkdownStyle(tone)
     val reusable = parsed?.takeIf { it.inlineStyle == style.inline }
@@ -54,6 +56,7 @@ internal fun StaticMarkdown(
             modifier = modifier,
             highlight = highlight,
             onTaskToggle = onTaskToggle,
+            codeWrap = codeWrap,
         )
     }
 }

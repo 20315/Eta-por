@@ -19,6 +19,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.IntOffset
@@ -246,8 +248,8 @@ internal fun MarkdownFileDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 普通全屏 Dialog：OverlayBottomSheet 嵌在工作区浏览器这类 sheet 内部时挂不上窗口
-    // （点了没反应），Dialog 在任意层级都能显示；顶部仍给标题栏。
+    // Dialog 打底（任意层级都能显示），里面自己画一张底部卡片：
+    // 遮罩淡入 + 卡片从底部滑入、退场反向播放，观感与会话里的底部弹层一致。
     androidx.compose.ui.window.Dialog(
         onDismissRequest = { requestClose() },
         properties = androidx.compose.ui.window.DialogProperties(
@@ -255,38 +257,68 @@ internal fun MarkdownFileDialog(
             dismissOnClickOutside = false,
         ),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MiuixTheme.colorScheme.surface)
-                .statusBarsPadding()
-                .navigationBarsPadding(),
-        ) {
-            // 标题：文件名一行 + 原有的路径与操作行
-            Text(
-                text = name,
-                style = MiuixTheme.textStyles.body1,
-                color = MiuixTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val cardHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { (maxHeight * 0.9f).toPx() }
+            // 0 = 完全展开，1 = 完全收起（在屏幕下方）
+            val progress = remember { Animatable(1f) }
+            LaunchedEffect(visible) {
+                if (visible) {
+                    progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
+                } else {
+                    progress.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
+                }
+            }
+            // 遮罩：随手势进度淡入淡出，点击关闭
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, top = 12.dp, end = 20.dp),
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f * (1f - progress.value)))
+                    .clickable(interactionSource = null, indication = null) { requestClose() },
             )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(maxHeight * 0.9f)
+                    .offset { IntOffset(0, (progress.value * cardHeightPx).roundToInt()) }
+                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                    .background(MiuixTheme.colorScheme.surface)
+                    .navigationBarsPadding(),
+            ) {
+                // 顶部拖拽提示条
+                Box(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                )
+            // 标题行：文件名 +（与文件名不同时）路径，右侧是编辑与更多
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 2.dp),
+                    .padding(start = 20.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                    Text(
-                        text = path,
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = name,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (path.isNotBlank() && path != name) {
+                            Text(
+                                text = path,
+                                style = MiuixTheme.textStyles.footnote2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = {
                             // 「笔」把原文件交给 MT 管理器，回来时自动刷新预览。
@@ -330,6 +362,7 @@ internal fun MarkdownFileDialog(
                     StaticMarkdown(
                         content = text,
                         tone = MarkdownTone.Answer,
+                        codeWrap = true,
                         modifier = Modifier.fillMaxWidth(),
                         onTaskToggle = { offset ->
                             val next = toggleTaskAt(text, offset)
@@ -407,6 +440,7 @@ internal fun MarkdownFileDialog(
                         }
                     }
                 }
+            }
             }
         }
     }

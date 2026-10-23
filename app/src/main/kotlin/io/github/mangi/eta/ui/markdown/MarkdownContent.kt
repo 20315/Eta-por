@@ -92,9 +92,11 @@ internal fun MarkdownContent(
     highlight: IntRange? = null,
     /** 任务列表勾选回写（源码偏移）；null 表示只读。 */
     onTaskToggle: ((Int) -> Unit)? = null,
+    /** 代码块是否按容器宽度折行（预览页要「自适应」，聊天里保持不折行 + 横向滚动）。 */
+    codeWrap: Boolean = false,
 ) {
-    val scope = remember(style, reveal, highlight, onTaskToggle) {
-        MarkdownRenderScope(style, reveal, highlight, onTaskToggle)
+    val scope = remember(style, reveal, highlight, onTaskToggle, codeWrap) {
+        MarkdownRenderScope(style, reveal, highlight, onTaskToggle, codeWrap)
     }
     MarkdownBlockColumn(blocks = document.blocks, scope = scope, compact = false, modifier = modifier)
 }
@@ -105,8 +107,9 @@ private class MarkdownRenderScope(
     val reveal: SmoothTextRevealCoordinator?,
     val highlight: IntRange? = null,
     val onTaskToggle: ((Int) -> Unit)? = null,
+    val codeWrap: Boolean = false,
 ) {
-    fun muted() = MarkdownRenderScope(style.muted(), reveal, highlight, onTaskToggle)
+    fun muted() = MarkdownRenderScope(style.muted(), reveal, highlight, onTaskToggle, codeWrap)
 }
 
 /** 嵌套列表的层级只影响 marker 字形，用 CompositionLocal 传递，块组件不必逐层转发。 */
@@ -313,14 +316,14 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
             )
             CopyButton(text = block.text.text, tint = style.secondaryColor)
         }
-        // 代码不折行，长行横向滚动，保留缩进与对齐。
+        // 预览页按宽度折行铺满（自适应）；聊天里保持不折行 + 横向滚动，保留缩进对齐。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
+                .then(if (scope.codeWrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))
                 .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
         ) {
-            MarkdownText(block, style.code, scope, softWrap = false)
+            MarkdownText(block, style.code, scope, softWrap = scope.codeWrap)
         }
     }
 }
