@@ -24,6 +24,17 @@ internal interface ProviderDao {
     @Query("DELETE FROM model_providers")
     suspend fun deleteAllProviders()
 
+    @Query("DELETE FROM model_providers WHERE is_built_in = 1")
+    suspend fun deleteBuiltInProviders(): Int
+
+    /** 定制版：只删未列入白名单的内置项，保留订阅登录用的条目。 */
+    @Query("DELETE FROM model_providers WHERE is_built_in = 1 AND id NOT IN (:keptIds)")
+    suspend fun deleteBuiltInProvidersExcept(keptIds: List<String>): Int
+
+    /** 填过 Key 的内置项转成自定义项：定制版不再收预置项，但用户填进去的凭据不能跟着删。 */
+    @Query("UPDATE model_providers SET is_built_in = 0 WHERE is_built_in = 1 AND TRIM(api_key) != ''")
+    suspend fun promoteConfiguredBuiltInProviders(): Int
+
     @Transaction
     @Query("SELECT * FROM model_providers WHERE id = :id")
     suspend fun providerById(id: String): ProviderWithModels?
@@ -54,6 +65,12 @@ internal interface ProviderDao {
 
     @Update
     suspend fun updateProvider(provider: ProviderEntity): Int
+
+    @Query(
+        "UPDATE model_providers SET auth_mode = :authMode, is_enabled = :isEnabled " +
+            "WHERE id = :providerId AND auth_mode = 'api_key' AND api_key = '' AND is_enabled = 0"
+    )
+    suspend fun activateRestoredOAuthProvider(providerId: String, authMode: String, isEnabled: Boolean): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertModels(models: List<ProviderModelEntity>)

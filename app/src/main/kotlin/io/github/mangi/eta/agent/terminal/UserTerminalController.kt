@@ -27,7 +27,6 @@ internal class UserTerminalController(
     private companion object {
         const val DEFAULT_CWD = "/data/local/tmp/eta"
         const val LINUX_DEFAULT_CWD = "/workspace"
-        const val MAX_COMMAND_CHARS = 16_000
         const val MAX_SESSIONS = 6
         const val STREAM_MAX_BYTES = 1024 * 1024
         const val POLL_INTERVAL_MS = 50L
@@ -171,9 +170,22 @@ internal class UserTerminalController(
      * 在指定常驻会话中执行命令并流式回调输出。阻塞当前线程，调用方需在 IO 线程使用。
      * 无超时；用户停止或 shell 死亡（如执行 exit）时返回 sessionClosed=true。
      */
-    fun exec(sessionId: String, command: String, onDelta: (text: String, isStderr: Boolean) -> Unit): ExecResult {
+    fun exec(sessionId: String, command: String, onDelta: (text: String, isStderr: Boolean) -> Unit): ExecResult =
+        HeavyCommandGate.guarded(
+            command = command,
+            waitMs = HeavyCommandGate.CONSOLE_WAIT_MS,
+            onNotice = { notice -> onDelta("[排队] $notice\n", false) },
+            timeoutMessage = "正在编译，本条没有执行，等编译结束后再试。",
+        ) {
+            execUnguarded(sessionId, command, onDelta)
+        }
+
+    private fun execUnguarded(
+        sessionId: String,
+        command: String,
+        onDelta: (text: String, isStderr: Boolean) -> Unit,
+    ): ExecResult {
         val trimmed = command.trim()
-        require(trimmed.length <= MAX_COMMAND_CHARS) { "command 过长：${trimmed.length}" }
         val current = synchronized(sessionLock) { sessions[sessionId] }
             ?: return ExecResult(
                 exitCode = null,

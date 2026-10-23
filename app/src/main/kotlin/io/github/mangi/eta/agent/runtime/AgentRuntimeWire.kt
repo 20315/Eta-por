@@ -14,6 +14,7 @@ import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.model.CustomBody
 import io.github.mangi.eta.data.model.CustomHeader
 import io.github.mangi.eta.data.model.ModelReasoningCapabilities
+import io.github.mangi.eta.data.model.ProviderAuthModes
 import io.github.mangi.eta.data.model.ReasoningEffort
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
@@ -83,12 +84,21 @@ internal object AgentRuntimeWire {
     /** service -> client：返回是否成功重新订阅指定 run。 */
     const val MSG_ATTACH_RUN_RESPONSE = 12
 
+    const val MSG_PAUSE = 16
+    const val MSG_RESUME = 17
+    const val MSG_STEER = 18
+
     private const val MODULE_PACKAGE = "io.github.mangi.eta"
     private const val SERVICE_CLASS = "io.github.mangi.eta.agent.runtime.AgentRuntimeService"
 
     private const val KEY_TYPE = "type"
+    private const val KEY_EVENT_VIRTUAL_SCREEN = "virtual_screen"
     private const val KEY_RUN_ID = "run_id"
-    private const val KEY_PROMPT = "prompt"
+    /** 多开时全部活跃 runId 的列表键；KEY_RUN_ID 保留第一个，兼容旧调用方。 */
+    private const val KEY_ACTIVE_RUN_IDS = "active_run_ids"
+    const val KEY_PROMPT: String = "prompt"
+    /** 插话目标会话：带上它表示「只投给这个会话正在跑的 run」；空白＝调用方没有会话信息（旧客户端）。 */
+    const val KEY_CONVERSATION_ID: String = "conversation_id"
     private const val KEY_ASSISTANT_SCREEN_CONTEXT = "assistant_screen_context"
     private const val KEY_MODEL_SESSION_ID = "model_session_id"
     private const val KEY_PROVIDER_ID = "provider_id"
@@ -97,6 +107,7 @@ internal object AgentRuntimeWire {
     private const val KEY_PROVIDER_SOURCE_TYPE = "provider_source_type"
     private const val KEY_BASE_URL = "base_url"
     private const val KEY_API_KEY = "api_key"
+    private const val KEY_AUTH_MODE = "auth_mode"
     private const val KEY_MODEL = "model"
     private const val KEY_MODEL_DISPLAY_NAME = "model_display_name"
     private const val KEY_CONTEXT_WINDOW = "context_window"
@@ -172,6 +183,13 @@ internal object AgentRuntimeWire {
                     ?.let { AgentUiHandoffPayload.from(it.payload).conversationId }
                     ?.takeIf { it.isNotBlank() } ?: runId
             }
+
+        val virtualScreenOwner: String
+            get() = handoff?.let { entry ->
+                AgentExternalArchivePayload.from(entry.payload)?.let {
+                    AgentExternalArchivePayload.conversationId(entry.source, it.conversationKey)
+                }
+            } ?: effectiveModelSessionId
     }
 
     /**
@@ -295,7 +313,8 @@ internal object AgentRuntimeWire {
         putString(KEY_PROVIDER_TYPE, request.config.providerType)
         putString(KEY_PROVIDER_SOURCE_TYPE, request.config.providerSourceType)
         putString(KEY_BASE_URL, request.config.baseUrl)
-        putString(KEY_API_KEY, request.config.apiKey)
+        putString(KEY_AUTH_MODE, request.config.authMode)
+        putString(KEY_API_KEY, request.config.apiKey.takeIf { request.config.authMode == ProviderAuthModes.API_KEY }.orEmpty())
         putString(KEY_MODEL, request.config.model)
         putString(KEY_MODEL_DISPLAY_NAME, request.config.modelDisplayName)
         putString("operation", request.operation)
@@ -429,7 +448,10 @@ internal object AgentRuntimeWire {
                     .ifBlank { io.github.mangi.eta.data.model.ProviderTypes.OPENAI_COMPATIBLE },
                 providerSourceType = bundle.getString(KEY_PROVIDER_SOURCE_TYPE).orEmpty(),
                 baseUrl = bundle.getString(KEY_BASE_URL).orEmpty(),
-                apiKey = bundle.getString(KEY_API_KEY).orEmpty(),
+                apiKey = bundle.getString(KEY_API_KEY).orEmpty().takeIf {
+                    bundle.getString(KEY_AUTH_MODE, ProviderAuthModes.API_KEY) == ProviderAuthModes.API_KEY
+                }.orEmpty(),
+                authMode = bundle.getString(KEY_AUTH_MODE) ?: ProviderAuthModes.API_KEY,
                 model = bundle.getString(KEY_MODEL).orEmpty(),
                 modelDisplayName = bundle.getString(KEY_MODEL_DISPLAY_NAME).orEmpty(),
                 contextWindow = bundle.optionalInt(KEY_CONTEXT_WINDOW),
@@ -595,6 +617,17 @@ internal object AgentRuntimeWire {
         putString(KEY_RUN_ID, runId)
     }
 
+    /** 多开时在跑的会话不止一个：把全部活跃 runId 一起回给 UI，避免其余会话被误判为中断。 */
+    fun activeRunBundle(runIds: List<String>): Bundle = Bundle().apply {
+        putString(KEY_RUN_ID, runIds.firstOrNull().orEmpty())
+        putStringArrayList(KEY_ACTIVE_RUN_IDS, ArrayList(runIds))
+    }
+
+    fun activeRunIdsFromBundle(bundle: Bundle): List<String> =
+        bundle.getStringArrayList(KEY_ACTIVE_RUN_IDS)
+            ?.filter { runId -> runId.isNotBlank() }
+            .orEmpty()
+
     fun attachRunResponseBundle(runId: String, attached: Boolean): Bundle = Bundle().apply {
         putString(KEY_RUN_ID, runId)
         putBoolean(KEY_OK, attached)
@@ -621,8 +654,13 @@ internal object AgentRuntimeWire {
         }
     }
 
-    /** 将 [AgentEvent] 打包为可跨进程传递的 [Bundle]。 */
-    fun eventToBundle(event: AgentEvent): Bundle = Bundle().apply {
+    /** 旧 Runtime 未携带执行位置时返回 null。 */
+    fun eventVirtualScreenFromBundle(bundle: Bundle): Boolean? =
+        if (bundle.containsKey(KEY_EVENT_VIRTUAL_SCREEN)) bundle.getBoolean(KEY_EVENT_VIRTUAL_SCREEN) else null
+
+    /** 将 [AgentEvent] 和可选的执行位置打包为可跨进程传递的 [Bundle]。 */
+    fun eventToBundle(event: AgentEvent, virtualScreen: Boolean? = null): Bundle = Bundle().apply {
+        virtualScreen?.let { putBoolean(KEY_EVENT_VIRTUAL_SCREEN, it) }
         when (event) {
             is AgentEvent.RunStarted -> {
                 putString(KEY_TYPE, "run_started")
@@ -636,6 +674,17 @@ internal object AgentRuntimeWire {
                 putString(KEY_TYPE, "round_started")
                 putInt("round", event.round)
                 putInt("message_count", event.messageCount)
+            }
+
+            is AgentEvent.HistoryTrimmed -> {
+                putString(KEY_TYPE, "history_trimmed")
+                putInt("omitted_messages", event.omittedMessages)
+                putInt("omitted_rounds", event.omittedUserRounds)
+            }
+
+            is AgentEvent.ContextOverflowDowngrade -> {
+                putString(KEY_TYPE, "context_overflow_downgrade")
+                putString("profile_id", event.profileId)
             }
 
             is AgentEvent.ContextCompaction -> {
@@ -774,6 +823,15 @@ internal object AgentRuntimeWire {
 
     /** 将 [Bundle] 还原为 [AgentEvent]，无法识别时返回 null。 */
     fun eventFromBundle(bundle: Bundle): AgentEvent? = when (bundle.getString(KEY_TYPE)) {
+        "history_trimmed" -> AgentEvent.HistoryTrimmed(
+            omittedMessages = bundle.getInt("omitted_messages"),
+            omittedUserRounds = bundle.getInt("omitted_rounds"),
+        )
+
+        "context_overflow_downgrade" -> AgentEvent.ContextOverflowDowngrade(
+            profileId = bundle.getString("profile_id").orEmpty(),
+        )
+
         "run_started" -> AgentEvent.RunStarted(
             initialImages = bundle.getInt("initial_images"),
             initialImageBytes = bundle.getInt("initial_image_bytes"),
@@ -919,8 +977,10 @@ internal object AgentRuntimeWire {
         usage.outputTokens?.let { putInt("usage_output", it) }
         usage.reasoningTokens?.let { putInt("usage_reasoning", it) }
         usage.cachedTokens?.let { putInt("usage_cache", it) }
+        usage.requestDurationMs?.let { putLong("usage_duration_ms", it) }
     }
 
+    @Suppress("DEPRECATION")
     private fun Bundle.getTokenUsage(): AgentTokenUsage =
         AgentTokenUsage(
             contextTokens = optionalInt("usage_context"),
@@ -928,6 +988,7 @@ internal object AgentRuntimeWire {
             outputTokens = optionalInt("usage_output"),
             reasoningTokens = optionalInt("usage_reasoning"),
             cachedTokens = optionalInt("usage_cache"),
+            requestDurationMs = (get("usage_duration_ms") as? Number)?.toLong()?.takeIf { it > 0 },
         )
 
     private fun decodeCustomHeaders(raw: String?): List<CustomHeader> =

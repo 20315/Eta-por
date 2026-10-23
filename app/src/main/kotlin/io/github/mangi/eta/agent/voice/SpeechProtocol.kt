@@ -13,7 +13,12 @@ internal enum class SpeechErrorCode {
     RATE_LIMITED, SERVER, PROTOCOL, NO_SPEECH, BACKPRESSURE, STORAGE,
 }
 
-internal class SpeechFailure(val code: SpeechErrorCode, val userMessage: String) : IOException(code.name)
+internal class SpeechFailure(
+    val code: SpeechErrorCode,
+    val userMessage: String,
+    /** 引擎/服务端的原始失败信息，只进日志，不给用户看。 */
+    val detail: String? = null,
+) : IOException(code.name)
 
 internal fun Throwable.speechFailure(): SpeechFailure = when (this) {
     is SpeechFailure -> this
@@ -25,12 +30,14 @@ internal fun Throwable.speechFailure(): SpeechFailure = when (this) {
 }
 
 internal fun validateSpeechSettings(settings: SpeechSettings, secrets: SpeechCredentials, synthesis: Boolean) {
+    if (!synthesis && !settings.recognitionEnabled) return
     fun required(value: String, name: String) {
         if (value.isBlank()) throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "请先配置$name")
     }
     if (synthesis) {
         when (settings.tts) {
             TtsProvider.NONE -> throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "请先在设置中配置语音播报")
+            TtsProvider.SYSTEM -> Unit
             TtsProvider.QWEN -> {
                 required(secrets.qwenTts, "千问播报 API Key")
                 required(settings.qwenVoice, "音色")
@@ -41,6 +48,22 @@ internal fun validateSpeechSettings(settings: SpeechSettings, secrets: SpeechCre
                 required(settings.doubaoVoice, "音色")
                 speechBaseUrl(settings.doubaoTts.baseUrl)
                 if (settings.doubaoTts.legacyAuth) required(settings.doubaoTts.appId, "豆包 App ID")
+            }
+            TtsProvider.GEMINI -> {
+                required(secrets.geminiTts, "Gemini 播报 API Key")
+                required(settings.geminiTts.voice, "音色")
+                speechBaseUrl(settings.geminiTts.baseUrl)
+                if (settings.geminiTts.style.length > 500) {
+                    throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "朗读风格请控制在 500 字以内")
+                }
+            }
+            TtsProvider.MINIMAX -> {
+                required(secrets.minimaxTts, "MiniMax 播报 API Key")
+                required(settings.minimaxTts.voice, "音色")
+                speechBaseUrl(settings.minimaxTts.baseUrl)
+                if (settings.minimaxTts.speed !in 0.5f..2f) {
+                    throw SpeechFailure(SpeechErrorCode.CONFIGURATION, "MiniMax 语速须在 0.5～2 倍之间")
+                }
             }
         }
     } else when (settings.asr) {

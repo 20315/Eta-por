@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.PowerManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -35,7 +37,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -54,18 +59,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.R
-import kotlin.math.sqrt
-import kotlin.random.Random
 import io.github.mangi.eta.agent.voice.EtaSpeechPhase
+import io.github.mangi.eta.agent.voice.ReadAloudPlaybackService
 import io.github.mangi.eta.agent.voice.SpeechInputController
 import io.github.mangi.eta.agent.voice.SpeechPlaybackController
+import io.github.mangi.eta.agent.voice.SpeechPlaybackState
 import io.github.mangi.eta.data.model.TtsProvider
 import io.github.mangi.eta.data.repository.SpeechSettingsRepository
 import io.github.mangi.eta.ui.MainActivity
+import io.github.mangi.eta.ui.model.AgentChatMessageUi
+import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.SystemNoticeCode
+import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
+import io.github.mangi.eta.ui.components.AnswerActionSize
 import io.github.mangi.eta.ui.components.ChatInputActionIconSize
 import io.github.mangi.eta.ui.components.ChatInputActionSize
 import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.StatusError
+import kotlin.math.sqrt
+import kotlin.random.Random
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -81,13 +94,22 @@ internal fun openSpeechSettings(context: Context) {
     )
 }
 
-/** 页面不可见或销毁时终止音频任务。 */
+/**
+ * 页面不可见或销毁时终止音频任务。
+ * 唯一的例外是熄屏：屏幕关闭同样会走 ON_STOP，但此时用户是"听着"而不是"看着"，
+ * 按设置继续朗读；真正离开应用（屏幕还亮着）仍然照旧停止。
+ */
 @Composable
 internal fun SpeechLifecycle(onStop: () -> Unit) {
+    val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val stop by rememberUpdatedState(onStop)
     DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) stop() }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
+            val interactive = context.getSystemService(PowerManager::class.java)?.isInteractive ?: true
+            if (interactive) stop()
+        }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer); stop() }
     }
@@ -205,11 +227,11 @@ internal fun SpeechInputFeedback(controller: SpeechInputController) {
                         onClick = { openSpeechSettings(context) },
                     )
                 }
-                IconButton(onClick = controller::cancel, minWidth = 28.dp, minHeight = 28.dp) {
+                IconButton(onClick = controller::cancel, minWidth = 36.dp, minHeight = 36.dp) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.action_cancel),
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
@@ -274,18 +296,99 @@ private fun SpeechFeedbackAction(text: String, primary: Boolean = false, onClick
 internal val LocalSpeechPlayback = staticCompositionLocalOf<SpeechPlaybackController?> { null }
 internal val LocalSpeechPlaybackEnabled = compositionLocalOf { false }
 
-/** 朗读控制器随聊天页生命周期存在；未配置播报服务时朗读入口整体隐藏。 */
+/**
+ * 聊天页自动朗读：一轮回答在本页流式生成并正常结束后，朗读这一轮的最终回答。
+ * 只认在本页看到过流式生成的回答，切换会话、打开历史或停止、失败的回合都不会补读。
+ */
+@Composable
+internal fun SpeechAutoReadAloud(messages: List<AgentChatMessageUi>, isStreaming: Boolean) {
+    val controller = LocalSpeechPlayback.current ?: return
+    val settings by remember { SpeechSettingsRepository.settingsFlow() }.collectAsState(initial = null)
+    val enabled = settings?.let { it.chatAutoSpeak && it.tts != TtsProvider.NONE } == true
+    var watchedId by remember { mutableStateOf<String?>(null) }
+    val currentMessages by rememberUpdatedState(messages)
+    LaunchedEffect(messages) {
+        messages.lastOrNull { it is AgentMessageUi && it.isStreaming }?.let { watchedId = it.id }
+        // 被观察的回答不在当前列表里，说明已经切到别的会话。
+        if (watchedId != null && messages.none { it.id == watchedId }) watchedId = null
+    }
+    LaunchedEffect(isStreaming) {
+        if (isStreaming) return@LaunchedEffect
+        val watched = watchedId ?: return@LaunchedEffect
+        watchedId = null
+        if (!enabled) return@LaunchedEffect
+        val list = currentMessages
+        if (list.none { it.id == watched }) return@LaunchedEffect
+        val answerIndex = list.indexOfLast { it is AgentMessageUi }
+        val answer = list.getOrNull(answerIndex) as? AgentMessageUi ?: return@LaunchedEffect
+        val interrupted = list.drop(answerIndex + 1).any {
+            it is SystemNoticeMessageUi && it.code in setOf(SystemNoticeCode.Stopped, SystemNoticeCode.RuntimeFailed)
+        }
+        // resume = true：一次回答可能分几段收尾，这里会触发好几次；
+        // 接着上次读完的位置往下念，不从头重来（手动点朗读按钮仍然是完整重念）。
+        if (!interrupted && answer.content.isNotBlank()) {
+            controller.speak(answer.id, answer.content, resume = true)
+        }
+    }
+    // 关闭自动朗读视同“别再读了”，正在进行的朗读一并停止。
+    var wasEnabled by remember { mutableStateOf(enabled) }
+    LaunchedEffect(enabled) {
+        if (wasEnabled && !enabled) controller.stop()
+        wasEnabled = enabled
+    }
+}
+
+/** 顶栏的自动朗读开关；未配置播报服务时不显示。 */
+@Composable
+internal fun SpeechAutoReadToggle() {
+    val scope = rememberCoroutineScope()
+    val settings by remember { SpeechSettingsRepository.settingsFlow() }.collectAsState(initial = null)
+    val current = settings ?: return
+    if (current.tts == TtsProvider.NONE) return
+    val on = current.chatAutoSpeak
+    IconButton(onClick = { scope.launch { SpeechSettingsRepository.save(current.copy(chatAutoSpeak = !on)) } }) {
+        Icon(
+            imageVector = if (on) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+            contentDescription = stringResource(if (on) R.string.speech_auto_read_on else R.string.speech_auto_read_off),
+            modifier = Modifier.size(22.dp),
+            tint = MiuixTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** 朗读进度：正文按它高亮当前片段；没有宿主提供时保持空状态，等于不高亮。 */
+internal val LocalSpeechPlaybackProgress = staticCompositionLocalOf<State<SpeechPlaybackState>> {
+    mutableStateOf(SpeechPlaybackState())
+}
+
+/**
+ * 朗读控制器随聊天页存在；未配置播报服务时朗读入口整体隐藏。
+ * 退到后台或锁屏时继续朗读（出声期间由前台播放服务保活），离开聊天页才停止。
+ */
 @Composable
 internal fun SpeechPlaybackHost(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val controller = remember { SpeechPlaybackController(context, scope) }
+    val controller = remember {
+        val appContext = context.applicationContext
+        lateinit var created: SpeechPlaybackController
+        created = SpeechPlaybackController(
+            context = context,
+            scope = scope,
+            beforePlayback = { ReadAloudPlaybackService.start(appContext) { created.stop() } },
+            afterPlayback = { ReadAloudPlaybackService.stop(appContext) },
+            interruptOnScreenOff = false,
+        )
+        created
+    }
     val settings by remember { SpeechSettingsRepository.settingsFlow() }.collectAsState(initial = null)
-    SpeechLifecycle { controller.stop() }
+    val playbackState = controller.state.collectAsState()
+    DisposableEffect(controller) { onDispose { controller.stop() } }
     SpeechPlaybackErrors(controller)
     CompositionLocalProvider(
         LocalSpeechPlayback provides controller,
         LocalSpeechPlaybackEnabled provides (settings != null && settings?.tts != TtsProvider.NONE),
+        LocalSpeechPlaybackProgress provides playbackState,
         content = content,
     )
 }
@@ -308,15 +411,15 @@ internal fun SpeechReadAloudButton(messageId: String, text: String) {
     val active = state.messageId == messageId
     IconButton(
         onClick = { if (active) controller.stop() else controller.speak(messageId, text) },
-        minWidth = 30.dp,
-        minHeight = 30.dp,
+        minWidth = AnswerActionSize,
+        minHeight = AnswerActionSize,
     ) {
         Icon(
             imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
             contentDescription = stringResource(
                 if (active) R.string.speech_read_stop else R.string.speech_read_aloud,
             ),
-            modifier = Modifier.size(if (active) 13.dp else 15.dp),
+            modifier = Modifier.size(if (active) 14.dp else 16.dp),
             tint = if (active) {
                 MiuixTheme.colorScheme.primary
             } else {

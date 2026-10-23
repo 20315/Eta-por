@@ -57,6 +57,9 @@
 # ── 序列化与网络依赖 ─────────────────────────────────────────────────────────
 # DataStore、kotlinx.serialization、OkHttp 与 Okio 均自带精确的 consumer rules；
 # 不在 App 层重复保留整个类或包，避免阻断裁剪、内联和混淆。
+# Nimbus 内嵌 Gson 携带此 CLASS 级静态检查注解，运行时不依赖它。
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+
 # 保留源码与行号属性，便于使用 release mapping 还原线上堆栈。
 -keepattributes SourceFile,LineNumberTable
 
@@ -64,3 +67,13 @@
 -keep class io.github.mangi.eta.agent.phone.PhoneCommandMain {
     public static void main(java.lang.String[]);
 }
+-keep class io.github.mangi.eta.agent.display.RootDisplayCommandMain {
+    public static void main(java.lang.String[]);
+}
+-keep class io.github.mangi.eta.agent.display.VirtualScreenRootTextInput {
+    public static void main(java.lang.String[]);
+}
+
+# 虚拟屏幕悬浮小窗
+-keep class io.github.mangi.eta.agent.display.VirtualScreenFloatWindow { *; }
+-keepclassmembers class io.github.mangi.eta.agent.display.VirtualScreenFloatWindow$* { *; }

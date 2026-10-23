@@ -12,6 +12,7 @@ import io.github.mangi.eta.agent.model.AgentModelFailure
 import io.github.mangi.eta.agent.model.AgentHttpClient
 import io.github.mangi.eta.agent.memory.AgentMemoryContext
 import io.github.mangi.eta.agent.memory.AgentMemoryContextBuilder
+import io.github.mangi.eta.agent.memory.ConversationMemoryPins
 import io.github.mangi.eta.agent.roleplay.CharacterMemoryTools
 import io.github.mangi.eta.agent.roleplay.RoleplayRunContext
 import io.github.mangi.eta.agent.mcp.McpRunSnapshot
@@ -21,6 +22,7 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
 import io.github.mangi.eta.agent.skill.SkillCompatibilityChecker
 import io.github.mangi.eta.agent.skill.SkillContext
 import io.github.mangi.eta.agent.skill.SkillRuntime
+import io.github.mangi.eta.agent.skill.SkillAuthoringService
 import io.github.mangi.eta.agent.skill.PublicGitHubSkillSource
 import io.github.mangi.eta.agent.tool.AgentLocalTools
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
@@ -33,6 +35,7 @@ import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 单次 Runtime run 的阻塞执行器。
@@ -50,6 +53,7 @@ internal class AgentRuntimeRunExecutor(
         AgentRuntimeWire.RunResult,
         List<AgentEvent>,
     ) -> Unit,
+    private val reviewGeneration: Long? = null,
 ) {
     data class Outcome(
         val result: AgentRuntimeWire.RunResult,
@@ -72,9 +76,12 @@ internal class AgentRuntimeRunExecutor(
         var toolsBinding: AgentRunController.ResourceBinding? = null
         var response: AgentModelClient.ModelResponse.Text? = null
         var cancelled = false
+        var roleplayRun = false
         var checkpointRecorder: AgentRunCheckpointRecorder? = null
         val timing = AgentRunTiming(AndroidAgentLogger)
 
+        // 失败清理需要在 try 外拿到会话 id。
+        var memoryConversationId: String? = null
         val result = try {
             val contextWindow = request.config.knownContextWindow
             checkpointRecorder = AgentRunCheckpointRecorder.create(appContext, request)
@@ -103,9 +110,11 @@ internal class AgentRuntimeRunExecutor(
                 ?.let { AgentUiHandoffPayload.from(it.payload) }
             val conversationId = uiPayload?.conversationId
                 ?.takeIf { it.isNotBlank() }
+            memoryConversationId = conversationId
             val roleplayContext = conversationId?.let { id ->
                 runBlocking { RoleplayRunContext.resolve(appContext, id, contextWindow, memoryEnabled) }
             }
+            roleplayRun = roleplayContext != null
             if (request.operation == AgentRuntimeWire.OP_REWRITE_REPLY) {
                 require(roleplayContext != null) { "只有角色会话可以改写角色回复" }
                 val target = request.rewriteTargetMessageId?.takeIf { it.isNotBlank() && it.length <= 256 }
@@ -121,7 +130,8 @@ internal class AgentRuntimeRunExecutor(
             }
             val memoryContext = if (memoryEnabled) {
                 runCatching {
-                    AgentMemoryContextBuilder.build(
+                    ConversationMemoryPins.contextFor(
+                        conversationId = conversationId,
                         snapshot = AgentMemoryRepository.snapshot(),
                         contextWindow = request.config.contextWindow,
                     )
@@ -133,6 +143,15 @@ internal class AgentRuntimeRunExecutor(
                 }
             } else {
                 AgentMemoryContext.DISABLED
+            }
+            if (request.config.terminalTools) {
+                // 启动探测由 App 拥有；模型首轮等待其结果，避免把检测中的授权当成普通设备。
+                runBlocking {
+                    while (io.github.mangi.eta.agent.device.RootAccess.state.value.isChecking) {
+                        runController.throwIfCancelled()
+                        kotlinx.coroutines.delay(100)
+                    }
+                }
             }
             val pendingSkillConflict = PendingSkillConflictCapabilityParser.parse(request.history)
             val mcpSnapshot = runBlocking {
@@ -148,6 +167,8 @@ internal class AgentRuntimeRunExecutor(
                 context = appContext,
                 logger = AndroidAgentLogger,
                 browserRunId = request.runId,
+                virtualScreenOwner = request.virtualScreenOwner,
+                isRunCancelled = { runController.isCancelled },
                 browserToolsEnabled = {
                     request.config.browserTools && currentPermissions().browserTools
                 },
@@ -173,31 +194,38 @@ internal class AgentRuntimeRunExecutor(
                     entrySurfaceGuard?.consumeScreenshotExcludedPackages().orEmpty()
                 },
                 beforeToolExecution = { toolName ->
-                    val requiresAccessibility =
-                        AgentToolRequirements.requiresAccessibility(toolName)
-                    if (
-                        !requiresAccessibility &&
-                        !AgentOverlayVisibilityPolicy.requiresEntrySurfaceDismissal(toolName)
-                    ) {
-                        ToolExecutionDecision.Allow
+                    if (io.github.mangi.eta.agent.automation.AgentTaskScheduler.isRegistered(request.runId) &&
+                        (toolName in io.github.mangi.eta.agent.automation.AgentTaskTools.names || toolName in setOf("terminal", "run_command") ||
+                            (!session.mainScreenFallbackApproved.get() && (AgentToolRequirements.requiresAccessibility(toolName) ||
+                                AgentOverlayVisibilityPolicy.isForegroundOperationTool(toolName) || toolName == "browser_use")))) {
+                        ToolExecutionDecision.Reject("AUTOMATION_ACTION_UNAVAILABLE", "自动任务暂不支持创建其他任务或操作主屏；需要独立虚拟屏执行环境")
                     } else {
-                        val accessibility = if (requiresAccessibility) {
-                            AgentAccessibilityKeeper.ensureEnabledForGuiOperation(appContext)
+                        val requiresAccessibility =
+                            AgentToolRequirements.requiresAccessibility(toolName)
+                        if (
+                            !requiresAccessibility &&
+                            !AgentOverlayVisibilityPolicy.requiresEntrySurfaceDismissal(toolName)
+                        ) {
+                            ToolExecutionDecision.Allow
                         } else {
-                            null
-                        }
-                        when {
-                            accessibility != null && !accessibility.available ->
-                                ToolExecutionDecision.Reject(
-                                    code = accessibility.code,
-                                    message = accessibility.message,
-                                )
-                            entrySurfaceGuard?.dismissOnce() == false ->
-                                ToolExecutionDecision.Reject(
-                                    code = "ENTRY_SURFACE_NOT_READY",
-                                    message = "入口窗口关闭未完成；本次工具未执行，请勿在当前任务中重复调用",
-                                )
-                            else -> ToolExecutionDecision.Allow
+                            val accessibility = if (requiresAccessibility) {
+                                AgentAccessibilityKeeper.ensureEnabledForGuiOperation(appContext)
+                            } else {
+                                null
+                            }
+                            when {
+                                accessibility != null && !accessibility.available ->
+                                    ToolExecutionDecision.Reject(
+                                        code = accessibility.code,
+                                        message = accessibility.message,
+                                    )
+                                entrySurfaceGuard?.dismissOnce() == false ->
+                                    ToolExecutionDecision.Reject(
+                                        code = "ENTRY_SURFACE_NOT_READY",
+                                        message = "入口窗口关闭未完成；本次工具未执行，请勿在当前任务中重复调用",
+                                    )
+                                else -> ToolExecutionDecision.Allow
+                            }
                         }
                     }
                 },
@@ -208,6 +236,9 @@ internal class AgentRuntimeRunExecutor(
                 skillPackageInstaller = skillPackageInstaller,
                 runAvailableSkillIds = skillContext.installedSkills.mapTo(mutableSetOf()) { it.id },
                 pendingSkillConflict = pendingSkillConflict,
+                skillAuthoringService = SkillAuthoringService(skillIndexService, skillPackageInstaller),
+                onMainScreenFallback = { session.mainScreenFallbackApproved.set(true) },
+                onVirtualTaskCancelled = { session.cancel("用户取消虚拟屏任务") },
             )
             val routingExecutor = RoutingToolExecutor(
                 local = executor,
@@ -233,7 +264,13 @@ internal class AgentRuntimeRunExecutor(
                     historyTool.execute(call)
                 } else if (call.name in CharacterMemoryTools.NAMES && characterMemoryTools != null) {
                     characterMemoryTools.execute(call)
-                } else routingExecutor.execute(call)
+                } else routingExecutor.execute(call).also { result ->
+                    if (call.name == "memory_write") {
+                        runCatching { JSONObject(result.content) }.getOrNull()
+                            ?.takeIf { it.optBoolean("ok") }
+                            ?.let { ConversationMemoryPins.recordOwnWrite(conversationId, it.optString("revision")) }
+                    }
+                }
             }
             val completedResponse = AgentModelClient.complete(
                 config = request.config,
@@ -245,6 +282,8 @@ internal class AgentRuntimeRunExecutor(
                 rewriteReply = request.operation == AgentRuntimeWire.OP_REWRITE_REPLY,
                 compactOnly = request.operation == AgentRuntimeWire.OP_COMPACT,
                 onContextSnapshot = { snapshot ->
+                    // 压缩会把历史里的记忆写入摘要掉，下一轮需要重新注入最新记忆。
+                    ConversationMemoryPins.forget(conversationId)
                     val committed = snapshot.copy(operationId = request.runId)
                     AgentRunCheckpointStore.saveContext(appContext, request.runId, committed)
                     session.updateContext(committed)
@@ -253,7 +292,7 @@ internal class AgentRuntimeRunExecutor(
                     AgentRunCheckpointStore.saveTranscript(appContext, request.runId, transcript)
                     session.updateTranscript(transcript)
                 },
-                capabilitiesProvider = { AgentToolCapabilities.capture(appContext) },
+                capabilitiesProvider = { executor.capabilitiesForRun(AgentToolCapabilities.capture(appContext)) },
                 prompt = request.prompt,
                 assistantScreenContext = request.assistantScreenContext,
                 toolExecutor = runToolExecutor,
@@ -263,6 +302,7 @@ internal class AgentRuntimeRunExecutor(
                 skillContext = skillContext,
                 memoryContext = memoryContext,
                 additionalTools = runTools,
+                executionContext = executor.terminalExecutionContext,
             ) { event ->
                 timing.accept(event)
                 acceptEvent(
@@ -274,6 +314,8 @@ internal class AgentRuntimeRunExecutor(
                 )
             }
             response = completedResponse
+            runController.throwIfCancelled()
+            executor.retainVirtualScreenOnSuccess()
             AgentRuntimeWire.RunResult(
                 runId = request.runId,
                 ok = true,
@@ -285,6 +327,8 @@ internal class AgentRuntimeRunExecutor(
                 rewriteTargetMessageId = request.rewriteTargetMessageId,
             )
         } catch (throwable: Throwable) {
+            // 失败时历史是否完整落盘不确定，放弃固定的记忆快照；记忆未变时重新注入的内容逐字节相同。
+            ConversationMemoryPins.forget(memoryConversationId)
             cancelled = runController.isCancelled || throwable is AgentRunCancelledException
             val modelFailure = throwable as? AgentModelExecutionException
             val message = if (cancelled) {
@@ -296,10 +340,19 @@ internal class AgentRuntimeRunExecutor(
                 AndroidAgentLogger.info("Agent runtime stopped")
             } else {
                 val requestFailure = modelFailure?.cause as? AgentModelFailure
+                val causeChain = generateSequence(throwable.cause) { cause -> cause.cause }
+                    .take(3)
+                    .joinToString("<-") { cause -> cause.safeLogType() }
                 AndroidAgentLogger.error(
                     "Agent runtime failed: type=${throwable.safeLogType()}, " +
                         "model_code=${requestFailure?.code.orEmpty()}, " +
-                        "cause_type=${requestFailure?.cause?.safeLogType().orEmpty()}"
+                        "cause_type=${requestFailure?.cause?.safeLogType().orEmpty()}, " +
+                        "cause_chain=$causeChain, run_id=${request.runId}"
+                )
+                io.github.mangi.eta.core.EtaTrace.log(
+                    "run.fail",
+                    "runId=${request.runId} type=${throwable.safeLogType()} " +
+                        "model_code=${requestFailure?.code.orEmpty()} cause=$causeChain",
                 )
                 val event = AgentEvent.RunFailed(message)
                 runCatching {
@@ -370,6 +423,13 @@ internal class AgentRuntimeRunExecutor(
                         "Agent runtime artifact persistence failed: type=${throwable.safeLogType()}"
                     )
                 }
+        }
+        val reviewEpoch = reviewGeneration
+        if (committed && result.ok && !cancelled && !roleplayRun && reviewEpoch != null) {
+            response?.let { completed ->
+                runCatching { AgentExperienceReview.submit(appContext, reviewEpoch, completedRequest, completed, archivedEvents.toList()) }
+                    .onFailure { error -> AndroidAgentLogger.warn("Experience review submission failed: type=${error.safeLogType()}") }
+            }
         }
         return Outcome(
             result = result,

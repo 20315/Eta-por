@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="conversation_loading">正在加载会话…</string>
+    <string name="conversation_load_failed">会话加载失败</string>
+    <string name="conversation_retry_load">重试</string>
+    <string name="conversation_retry_earlier_messages">加载失败，点击重试</string>
+    <string name="conversation_load_turn_start">请向上翻到这一轮的用户提问后再操作</string>
+</resources>

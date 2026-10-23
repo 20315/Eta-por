@@ -9,12 +9,23 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import java.io.Closeable
 import kotlinx.coroutines.CancellationException
 
 /** 只协调本进程的录音和播放；所有入口共用一个租约，资源仍由入口生命周期持有。 */
-internal class SpeechAudioLease(private val context: Context, private val interrupt: () -> Unit) : Closeable {
+/**
+ * [interruptOnScreenOff] 为 false 时锁屏不打断：聊天朗读需要在锁屏和后台继续，
+ * 录音与助手浮窗仍随熄屏结束。
+ */
+internal class SpeechAudioLease(
+    private val context: Context,
+    private val interruptOnScreenOff: Boolean = true,
+    private val interrupt: () -> Unit,
+) : Closeable {
     private val manager = context.getSystemService(AudioManager::class.java)
+    private val power = context.getSystemService(PowerManager::class.java)
+    private var wakeLock: PowerManager.WakeLock? = null
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -23,7 +34,11 @@ internal class SpeechAudioLease(private val context: Context, private val interr
     private var registered = false
     private var focused = false
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { if (current === this@SpeechAudioLease) interrupt() }
+        override fun onReceive(context: Context, intent: Intent) {
+            // 息屏本身不再打断朗读：熄屏继续读依赖这里不被停掉；耳机拔出仍然停。
+            if (intent.action == Intent.ACTION_SCREEN_OFF) return
+            if (current === this@SpeechAudioLease) interrupt()
+        }
     }
 
     fun acquire(playback: Boolean, beforeFocus: () -> Unit = {}) {
@@ -32,9 +47,16 @@ internal class SpeechAudioLease(private val context: Context, private val interr
         try {
             context.registerReceiver(receiver, IntentFilter().apply {
                 addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
-                addAction(Intent.ACTION_SCREEN_OFF)
+                if (interruptOnScreenOff) addAction(Intent.ACTION_SCREEN_OFF)
             }, Context.RECEIVER_NOT_EXPORTED)
             registered = true
+            // 熄屏后网络合成与播放仍要跑：短时持一把 partial wakelock，超时自释避免漏电。
+            if (wakeLock == null) {
+                wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "eta:speech").apply {
+                    setReferenceCounted(false)
+                    runCatching { acquire(WAKE_LOCK_TIMEOUT_MS) }
+                }
+            }
             if (playback) requestPlaybackFocus(beforeFocus)
         } catch (error: RuntimeException) {
             close()
@@ -50,6 +72,8 @@ internal class SpeechAudioLease(private val context: Context, private val interr
     }
 
     override fun close() {
+        wakeLock?.let { if (it.isHeld) runCatching { it.release() } }
+        wakeLock = null
         if (registered) context.unregisterReceiver(receiver)
         registered = false
         if (focused) manager.abandonAudioFocusRequest(focus)
@@ -57,5 +81,8 @@ internal class SpeechAudioLease(private val context: Context, private val interr
         if (current === this) current = null
     }
 
-    private companion object { var current: SpeechAudioLease? = null }
+    private companion object {
+        var current: SpeechAudioLease? = null
+        const val WAKE_LOCK_TIMEOUT_MS = 30L * 60L * 1000L
+    }
 }

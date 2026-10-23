@@ -18,7 +18,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.terminal.AlpineEnvironmentInstaller
 import io.github.mangi.eta.agent.terminal.AlpineEnvironmentState
@@ -36,6 +35,8 @@ import io.github.mangi.eta.agent.terminal.DebianInstallStage
 import io.github.mangi.eta.agent.terminal.DetachedTaskSupervisor
 import io.github.mangi.eta.agent.terminal.LinuxApkAnalysisInstaller
 import io.github.mangi.eta.agent.terminal.LinuxDistribution
+import io.github.mangi.eta.agent.terminal.LinuxCapabilityItem
+import io.github.mangi.eta.agent.terminal.LinuxCapabilityProbe
 import io.github.mangi.eta.agent.terminal.LinuxEnvironmentPaths
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
 import io.github.mangi.eta.agent.terminal.LinuxPackageProfile
@@ -58,6 +59,7 @@ import io.github.mangi.eta.ui.components.EtaArrowPreference
 import io.github.mangi.eta.ui.components.EtaCard
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceColors
+import io.github.mangi.eta.ui.components.EtaPreferenceDefaults
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
@@ -172,6 +174,10 @@ internal fun LinuxEnvironmentScreen(
     var apkAnalysisReady by remember(selectedDistribution, backend) {
         mutableStateOf(apkAnalysisInstaller.isReady())
     }
+    var capabilityItems by remember(appContext, selectedDistribution, backend) {
+        mutableStateOf<List<LinuxCapabilityItem>>(emptyList())
+    }
+    var capabilityChecking by remember(appContext, selectedDistribution, backend) { mutableStateOf(true) }
     var apkAnalysisProgress by remember { mutableStateOf<ApkAnalysisInstallProgress?>(null) }
     var kimiWebLaunching by remember { mutableStateOf(false) }
     var kimiWebRunning by remember(selectedDistribution, backend) { mutableStateOf(false) }
@@ -189,6 +195,13 @@ internal fun LinuxEnvironmentScreen(
                 linuxSharedMountsProvider = { SharedFolderMounts.current() },
             ),
         )
+    }
+    LaunchedEffect(appContext, selectedDistribution, backend, status.version, debianStatus.version, apkAnalysisReady) {
+        capabilityChecking = true
+        capabilityItems = withContext(Dispatchers.IO) {
+            LinuxCapabilityProbe.probe(appContext, selectedDistribution)
+        }
+        capabilityChecking = false
     }
     LaunchedEffect(selectedDistribution, backend, kimiWebLaunching) {
         if (!kimiWebLaunching) {
@@ -368,9 +381,12 @@ internal fun LinuxEnvironmentScreen(
                 },
             )
         }
+        item(key = "capability-section") {
+            LinuxCapabilitySection(items = capabilityItems, checking = capabilityChecking)
+        }
         item(key = "files-title") { EtaPreferenceGroupTitle(stringResource(R.string.linux_environment_files)) }
         item(key = "files-card") {
-            EtaPreferenceGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            EtaPreferenceGroup {
                 EtaArrowPreference(
                     title = stringResource(R.string.capability_workspace),
                     summary = stringResource(R.string.capability_workspace_summary),
@@ -397,12 +413,15 @@ internal fun LinuxEnvironmentScreen(
         }
 
         if (selectedToolsReady) {
-            item(key = "optional-tools-title") { EtaPreferenceGroupTitle(stringResource(R.string.ui_optional_tools_3097d6)) }
+            item(key = "optional-tools-title") {
+                EtaPreferenceGroupTitle(stringResource(R.string.ui_optional_tools_3097d6), modifier = Modifier.animateItem())
+            }
             item(key = "optional-tools-card") {
                 EtaPreferenceGroup(
                     modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 16.dp),
+                        .animateItem()
+                        .padding(horizontal = EtaPreferenceDefaults.SidePadding)
+                        .padding(bottom = EtaPreferenceDefaults.GroupSpacing),
                 ) {
                     packageProfileUis.forEachIndexed { index, profileUi ->
                         val ready = profileReady[profileUi.target] == true

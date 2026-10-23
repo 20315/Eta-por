@@ -18,6 +18,9 @@ sealed interface AppRoute : NavKey {
     data object Tools : AppRoute
 
     @Serializable
+    data object WebToolsSettings : AppRoute
+
+    @Serializable
     data object Skills : AppRoute
 
     @Serializable
@@ -64,6 +67,25 @@ sealed interface AppRoute : NavKey {
 
     @Serializable
     data object Memory : AppRoute
+    @Serializable
+    data object Tasks : AppRoute
+
+    @Serializable
+    data object TokenUsage : AppRoute
+
+    @Serializable
+    data object DataUsage : AppRoute
+
+    @Serializable
+    data object SelfCheck : AppRoute
+
+    @Serializable
+    data object DiagnosticsPatrol : AppRoute
+
+    @Serializable
+    data object ConversationCategories : AppRoute
+    @Serializable
+    data object VirtualScreen : AppRoute
 
     @Serializable
     data object LinuxEnvironment : AppRoute
@@ -88,6 +110,9 @@ sealed interface AppRoute : NavKey {
 
     @Serializable
     data object McpServers : AppRoute
+
+    @Serializable
+    data object GitHubAccount : AppRoute
 
     @Serializable
     data class McpServerDetail(val serverId: String) : AppRoute

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import io.github.mangi.eta.data.model.ModelSource
+import io.github.mangi.eta.data.model.ProviderAuthModes
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -21,7 +22,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class EtaDatabaseMigrationTest {
     @Test
-    fun migration6To22PreservesDataAndMovesCompleteConversationContext() {
+    fun migration6To25PreservesDataAndMovesCompleteConversationContext() {
         val context = RuntimeEnvironment.getApplication() as Context
         val databaseName = "migration-${UUID.randomUUID()}.db"
         createVersion6Database(context, databaseName)
@@ -55,6 +56,9 @@ class EtaDatabaseMigrationTest {
                 EtaDatabase.MIGRATION_19_20,
                 EtaDatabase.MIGRATION_20_21,
                 EtaDatabase.MIGRATION_21_22,
+                EtaDatabase.MIGRATION_22_23,
+                EtaDatabase.MIGRATION_23_24,
+                EtaDatabase.MIGRATION_24_25,
             )
             .build()
         try {
@@ -120,6 +124,8 @@ class EtaDatabaseMigrationTest {
             assertEquals(null, runBlocking(Dispatchers.IO) { database.conversationDao().state() })
             assertEquals(listOf("built-in", "manual"), provider.models.map { it.modelId })
             assertEquals(false, provider.hostedWebSearchEnabled)
+            assertEquals(ProviderAuthModes.API_KEY, provider.authMode)
+            assertEquals("fixture-existing-api-key", provider.apiKey)
             assertEquals(false, migratedMessage.isEdited)
             assertEquals(emptyList<RuntimeInFlightRunWithEvents>(), inFlightRuns)
             assertEquals(listOf("mcp-1"), mcpServers.map { it.id })
@@ -131,6 +137,67 @@ class EtaDatabaseMigrationTest {
                 listOf(ModelSource.CATALOG, ModelSource.MANUAL),
                 provider.models.map { it.source },
             )
+        } finally {
+            database.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun upstreamVersion22KeepsBoundModelAndGainsTaskAndUsageTables() {
+        verifyLegacyUpgrade(vivoBranch = false)
+    }
+
+    @Test
+    fun vivoVersion24KeepsTasksAndUsageWhileAddingModelBinding() {
+        verifyLegacyUpgrade(vivoBranch = true)
+    }
+
+    private fun verifyLegacyUpgrade(vivoBranch: Boolean) {
+        val context = RuntimeEnvironment.getApplication() as Context
+        val databaseName = "legacy-${UUID.randomUUID()}.db"
+        createVersion6Database(context, databaseName)
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context).name(databaseName)
+            .callback(object : SupportSQLiteOpenHelper.Callback(if (vivoBranch) 24 else 22) {
+                override fun onCreate(db: SupportSQLiteDatabase) = error("Expected existing version 6 fixture")
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                    assertEquals(6, oldVersion)
+                    listOf(EtaDatabase.MIGRATION_6_7, EtaDatabase.MIGRATION_7_8, EtaDatabase.MIGRATION_8_9,
+                        EtaDatabase.MIGRATION_9_10, EtaDatabase.MIGRATION_10_11, EtaDatabase.MIGRATION_11_12,
+                        EtaDatabase.MIGRATION_12_13, EtaDatabase.MIGRATION_13_14, EtaDatabase.MIGRATION_14_15,
+                        EtaDatabase.MIGRATION_15_16, EtaDatabase.MIGRATION_16_17, EtaDatabase.MIGRATION_17_18,
+                        EtaDatabase.MIGRATION_18_19, EtaDatabase.MIGRATION_19_20, EtaDatabase.MIGRATION_20_21)
+                        .forEach { it.migrate(db) }
+                    if (vivoBranch) {
+                        EtaDatabase.MIGRATION_22_23.migrate(db)
+                        EtaDatabase.MIGRATION_23_24.migrate(db)
+                        db.execSQL("UPDATE conversations SET last_model_usage_json = ? WHERE id = 'conv-1'",
+                            arrayOf("{\"outputTokens\":12,\"requestDurationMs\":1000}"))
+                        db.execSQL("INSERT INTO agent_tasks (id, name, prompt, triggerJson, enabled, cooldownSeconds, " +
+                            "maxRuns, runCount, lastStatus, createdAt, updatedAt) VALUES " +
+                            "('task-1', 'Retained task', 'Summarize', '{}', 0, 900, 10, 2, 'completed', 1, 2)")
+                    } else {
+                        EtaDatabase.MIGRATION_21_22.migrate(db)
+                        db.execSQL("UPDATE conversations SET model_id = 'bound-model' WHERE id = 'conv-1'")
+                    }
+                }
+            }).build()
+        FrameworkSQLiteOpenHelperFactory().create(configuration).use { it.writableDatabase }
+        val database = Room.databaseBuilder(context, EtaDatabase::class.java, databaseName)
+            .addMigrations(EtaDatabase.MIGRATION_22_23, EtaDatabase.MIGRATION_23_24, EtaDatabase.MIGRATION_24_25)
+            .build()
+        try {
+            runBlocking(Dispatchers.IO) {
+                val conversation = database.conversationDao().conversationMetadataRows().first { it.id == "conv-1" }
+                assertEquals("保留的对话", conversation.title)
+                assertEquals(if (vivoBranch) null else "bound-model", conversation.modelId)
+                assertEquals(if (vivoBranch) "{\"outputTokens\":12,\"requestDurationMs\":1000}" else "", conversation.lastModelUsageJson)
+                assertEquals(1, database.conversationDao().messages().size)
+                val tasks = database.agentTaskDao().tasks()
+                assertEquals(if (vivoBranch) listOf("task-1") else emptyList<String>(), tasks.map { it.id })
+                if (vivoBranch) assertEquals(2, tasks.single().runCount)
+            }
+            assertEquals(25, database.openHelper.readableDatabase.version)
         } finally {
             database.close()
             context.deleteDatabase(databaseName)
@@ -195,7 +262,7 @@ class EtaDatabaseMigrationTest {
                             "INSERT INTO model_providers " +
                                 "(id, type, name, base_url, api_key, is_enabled, is_built_in, sort_order, " +
                                 "system_prompt, custom_headers_json, custom_body_json, created_at, endpoint_mode, anthropic_version) " +
-                                "VALUES ('provider-1', 'openai_compatible', 'Provider', 'https://example.com/v1', '', 1, 0, 0, " +
+                                "VALUES ('provider-1', 'openai_compatible', 'Provider', 'https://example.com/v1', 'fixture-existing-api-key', 1, 0, 0, " +
                                 "NULL, '[]', '[]', 1, 'chat_completions', '2023-06-01')"
                         )
                         db.execSQL(providerModelInsert("built-in-id", "built-in", 1, 0))

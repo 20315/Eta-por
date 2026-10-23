@@ -74,6 +74,16 @@ internal object McpServerRepository {
         update(server.copy(enabledToolNames = names))
     }
 
+    /** 批量启用/停用工具：一次事务写入，避免 46 个工具逐个 update。 */
+    suspend fun setToolsEnabled(serverId: String, toolNames: Collection<String>, enabled: Boolean) {
+        if (toolNames.isEmpty()) return
+        val server = requireNotNull(serverById(serverId)) { "MCP 服务器不存在" }
+        val names = server.enabledToolNames.toMutableSet()
+        if (enabled) names += toolNames else names -= toolNames
+        if (names == server.enabledToolNames) return
+        update(server.copy(enabledToolNames = names))
+    }
+
     suspend fun delete(serverId: String) {
         val previous = requireNotNull(serverById(serverId)) { "MCP 服务器不存在" }
         val secretStore = secrets()

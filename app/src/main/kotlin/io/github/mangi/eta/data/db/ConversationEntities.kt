@@ -20,10 +20,15 @@ internal data class ConversationEntity(
     @ColumnInfo(name = "applied_runtime_run_ids_json") val appliedRuntimeRunIdsJson: String = "[]",
     @ColumnInfo(name = "roleplay_json", defaultValue = "''") val roleplayJson: String = "",
     @ColumnInfo(name = "revisions_json", defaultValue = "''") val revisionsJson: String = "",
+    @ColumnInfo(name = "last_model_usage_json", defaultValue = "''") val lastModelUsageJson: String = "",
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
     /** 会话最近使用的本地 Model.id；null 表示跟随默认模型。 */
     @ColumnInfo(name = "model_id") val modelId: String? = null,
+    /** 收藏置顶：置顶会话排在最前，批量删除时跳过，避免误删。 */
+    @ColumnInfo(name = "pinned", defaultValue = "0") val pinned: Boolean = false,
+    /** 所属会话分类；null 表示未分类，分类被删除后回落到未分类。 */
+    @ColumnInfo(name = "category_id") val categoryId: String? = null,
 )
 
 internal data class ConversationMetadata(
@@ -34,10 +39,38 @@ internal data class ConversationMetadata(
     @ColumnInfo(name = "applied_runtime_run_ids_json") val appliedRuntimeRunIdsJson: String,
     @ColumnInfo(name = "roleplay_json") val roleplayJson: String = "",
     @ColumnInfo(name = "revisions_json") val revisionsJson: String = "",
+    @ColumnInfo(name = "last_model_usage_json") val lastModelUsageJson: String = "",
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
     @ColumnInfo(name = "model_id") val modelId: String? = null,
+    @ColumnInfo(name = "pinned") val pinned: Boolean = false,
+    /** 所属会话分类；null 表示未分类，分类被删除后回落到未分类。 */
+    @ColumnInfo(name = "category_id") val categoryId: String? = null,
 )
+
+/** 会话侧栏只读取定长预览，不读取上下文、角色卡与修订正文。 */
+internal data class ConversationIndexRow(
+    val id: String,
+    val title: String,
+    @ColumnInfo(name = "reasoning_effort") val reasoningEffort: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    @ColumnInfo(name = "model_id") val modelId: String?,
+    @ColumnInfo(name = "message_id") val messageId: String?,
+    @ColumnInfo(name = "message_type") val messageType: String?,
+    @ColumnInfo(name = "message_preview") val messagePreview: String?,
+    @ColumnInfo(name = "tool_name") val toolName: String?,
+    @ColumnInfo(name = "has_roleplay") val hasRoleplay: Boolean,
+)
+
+internal data class ConversationIdentity(
+    val id: String,
+    val title: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+internal data class ConversationMessageContent(val id: String, val content: String)
 
 @Serializable
 @Entity(
@@ -99,6 +132,7 @@ internal data class ConversationMessageEntity(
     @ColumnInfo(name = "output_tokens") val outputTokens: Int? = null,
     @ColumnInfo(name = "reasoning_tokens") val reasoningTokens: Int? = null,
     @ColumnInfo(name = "cached_tokens") val cachedTokens: Int? = null,
+    @ColumnInfo(name = "request_duration_ms") val requestDurationMs: Long? = null,
     @ColumnInfo(name = "elapsed_seconds") val elapsedSeconds: Int? = null,
     @ColumnInfo(name = "tool_name") val toolName: String? = null,
     @ColumnInfo(name = "tool_status") val toolStatus: String? = null,

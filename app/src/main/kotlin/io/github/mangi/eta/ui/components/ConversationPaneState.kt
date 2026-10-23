@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.filterNotNull
 internal enum class ConversationPaneAnchor {
     Closed,
     Open,
+    /** 向左拖到底：右侧工作区面板占据主视觉。 */
+    Workspace,
+}
+
+/** 右侧工作区面板的锚点：Closed = 停在屏外，Open = 完全展开。 */
+internal enum class WorkspaceAnchor {
+    Closed,
+    Open,
 }
 
 internal fun conversationPaneSettledValues(

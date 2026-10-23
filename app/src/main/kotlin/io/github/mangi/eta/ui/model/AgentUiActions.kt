@@ -3,11 +3,20 @@ package io.github.mangi.eta.ui.model
 import io.github.mangi.eta.data.model.ReasoningEffort
 
 sealed interface AgentHomeAction {
+    data object ResumeInterruptedRun : AgentHomeAction
+    data object DismissInterruptedRun : AgentHomeAction
     data object CompactContext : AgentHomeAction
     data class ReasoningEffortChanged(val effort: ReasoningEffort) : AgentHomeAction
     data class ModelSelected(val modelId: String) : AgentHomeAction
     data class SubmitMessage(val text: String) : AgentHomeAction
+    data class InterruptAndSubmitMessage(val text: String) : AgentHomeAction
+    data class QueueMessage(val text: String) : AgentHomeAction
+    data class SteerQueuedMessage(val id: String) : AgentHomeAction
+    data class RecallQueuedMessage(val id: String, val currentDraftText: String) : AgentHomeAction
+    data class RemoveQueuedMessage(val id: String) : AgentHomeAction
     data object StopRun : AgentHomeAction
+    data object PauseRun : AgentHomeAction
+    data object ResumeRun : AgentHomeAction
     data class ImageAttached(val uri: String) : AgentHomeAction
     data class RemoveImage(val id: String) : AgentHomeAction
     data class FilesAttached(val uris: List<String>) : AgentHomeAction
@@ -16,6 +25,18 @@ sealed interface AgentHomeAction {
     data class RemoveFileReference(val id: String) : AgentHomeAction
     data class EditMessage(val id: String) : AgentHomeAction
     data object CancelMessageEdit : AgentHomeAction
+    data object SearchJumpConsumed : AgentHomeAction
+    /** 会话框上方小白条上滑：打开会话导航面板。 */
+    data object OpenConversationNavigator : AgentHomeAction
+    /** 命令确认卡：确认执行 / 收起。 */
+    data object ConfirmAgentCommand : AgentHomeAction
+    /** 工具与技能面板：切换某个 MCP 服务器 / 技能的启用状态。 */
+    data class ToggleMcpServer(val serverId: String, val enabled: Boolean) : AgentHomeAction
+    data class ToggleSkill(val skillId: String, val enabled: Boolean) : AgentHomeAction
+    /** @ 引用：挂上 / 去掉一条历史消息。 */
+    data class AttachMessageReference(val reference: MessageReferenceUi) : AgentHomeAction
+    data class RemoveMessageReference(val messageId: String) : AgentHomeAction
+    data object DismissAgentCommandConfirm : AgentHomeAction
     data class DeleteMessage(val id: String) : AgentHomeAction
     data class RegenerateMessage(val id: String) : AgentHomeAction
     data class SelectReplyCandidate(val id: String, val index: Int) : AgentHomeAction
@@ -38,6 +59,7 @@ sealed interface AgentToolsAction {
     data object OpenPermissions : AgentToolsAction
     data object NavigateBack : AgentToolsAction
     data object OpenBrowser : AgentToolsAction
+    data object OpenWebToolsSettings : AgentToolsAction
 }
 
 sealed interface AgentSkillsAction {
@@ -60,6 +82,9 @@ sealed interface AgentSystemEnhanceAction {
 sealed interface AgentMemoryAction {
     data object NavigateBack : AgentMemoryAction
     data class ToggleEnabled(val enabled: Boolean) : AgentMemoryAction
+    data class ToggleAutoMemory(val enabled: Boolean) : AgentMemoryAction
+    data class ToggleAutoSkills(val enabled: Boolean) : AgentMemoryAction
+    data class ToggleAutoCompact(val enabled: Boolean) : AgentMemoryAction
     data class DraftChanged(val content: String) : AgentMemoryAction
     data object Save : AgentMemoryAction
     data object Clear : AgentMemoryAction

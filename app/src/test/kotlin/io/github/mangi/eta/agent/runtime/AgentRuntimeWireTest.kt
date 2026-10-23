@@ -7,6 +7,7 @@ import android.util.Base64
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.data.model.ModelReasoningCapabilities
+import io.github.mangi.eta.data.model.ProviderAuthModes
 import io.github.mangi.eta.data.model.ReasoningEffort
 import java.io.File
 import java.io.FileOutputStream
@@ -27,6 +28,52 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33, 36])
 class AgentRuntimeWireTest {
+    @Test
+    fun generationDurationSurvivesBundlesArchivesAndOldEventsWithoutTiming() {
+        val event = AgentEvent.UsageReceived(2, AgentTokenUsage(contextTokens = 1200, outputTokens = 80, requestDurationMs = 2000))
+        val bundle = AgentRuntimeWire.eventToBundle(event)
+        assertEquals(event, AgentRuntimeWire.eventFromBundle(bundle))
+        assertEquals(event, AgentEventJsonCodec.decode(AgentEventJsonCodec.encode(event)))
+        bundle.remove("usage_duration_ms")
+        assertNull((AgentRuntimeWire.eventFromBundle(bundle) as AgentEvent.UsageReceived).usage.requestDurationMs)
+    }
+
+    @Test
+    fun vivoAndImportedEtaTurnsShareTheVirtualDisplayOwner() {
+        val handoff = io.github.mangi.eta.hook.vivo.VivoHandoff.create("one", "trace", "request", "session", "操作应用")
+        val config = AgentModelClient.ModelConfig(baseUrl = "https://example.invalid", apiKey = "fixture", model = "fixture", systemPrompt = "")
+        val vivo = AgentRuntimeWire.RunRequest("one", "操作应用", config, emptyList(), handoff = handoff)
+        val id = AgentExternalArchivePayload.conversationId("vivo", "session")
+        val eta = vivo.copy(runId = "two", handoff = AgentRuntimeWire.EntryHandoff("two", AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE, id))
+        assertEquals(id, vivo.virtualScreenOwner)
+        assertEquals(vivo.virtualScreenOwner, eta.virtualScreenOwner)
+        assertEquals(id, eta.copy(runId = "three").virtualScreenOwner)
+    }
+
+    @Test
+    fun oauthWireCarriesOnlyAuthenticationModeAndDropsLegacySecrets() {
+        val request = AgentRuntimeWire.RunRequest(
+            runId = "oauth-wire", prompt = "测试", images = emptyList(),
+            config = AgentModelClient.ModelConfig(
+                providerId = "oauth-provider", authMode = ProviderAuthModes.OPENAI_CHATGPT,
+                baseUrl = "https://api.openai.com/v1", apiKey = "fixture-must-not-cross-ipc",
+                model = "fixture", systemPrompt = "",
+            ),
+        )
+        val bundle = AgentRuntimeWire.toLegacyBundle(request)
+        assertEquals(ProviderAuthModes.OPENAI_CHATGPT, bundle.getString("auth_mode"))
+        assertEquals("", bundle.getString("api_key"))
+        bundle.putString("api_key", "fixture-untrusted-bundle-secret")
+        val restored = AgentRuntimeWire.runRequestFromBundle(bundle)
+        assertEquals("", restored.config.apiKey)
+        assertEquals(ProviderAuthModes.OPENAI_CHATGPT, restored.config.authMode)
+
+        bundle.remove("auth_mode")
+        val legacy = AgentRuntimeWire.runRequestFromBundle(bundle)
+        assertEquals(ProviderAuthModes.API_KEY, legacy.config.authMode)
+        assertEquals("fixture-untrusted-bundle-secret", legacy.config.apiKey)
+    }
+
     @Test
     fun automaticCompactionSettingSurvivesIpcAndDefaultsForOldRequests() {
         val config = AgentModelClient.ModelConfig(

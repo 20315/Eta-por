@@ -53,6 +53,9 @@ A task can combine these tools: read web sources and then organize files with a 
 - **Personal context:** retrieve notifications, app usage, and location on demand. Dedicated searches for photos, calendar events, SMS messages, recordings, health summaries, and chat images require root; some sources also depend on the ROM and installed apps.
 - **Long-term memory:** store context for future conversations in a local `MEMORY.md`. Core memory is included within a context budget, with the rest retrieved as needed. You can edit, clear, or disable it.
 - **Skills:** load task instructions, reference material, and script resources as needed. Install from public GitHub repositories or import a local ZIP. Installation does not run scripts or grant additional permissions.
+- **Experience learning:** after successful tasks, a separate review can append durable memory and create or update user skills from verified methods. Foreground work takes priority; both learning options can be disabled. See [experience learning](docs/EXPERIENCE_LEARNING.md).
+- **Automation:** ask AI to create time or event rules with local matching, cooldowns, run limits, history, and cancellation. Android background scheduling may delay execution. See [automation](docs/AUTOMATION.md).
+- **Root virtual screen (experimental):** automatically route AI UI tools to a separate display when enabled. Open its interactive viewer from the notification, with touch controls and gesture indicators. An optional fallback setting allows notification requests; only an explicit Allow action authorizes the current task to use the main screen. Requires Android 14+, root, and a user setting; screen-off operation has separate consent and remains unverified. See [virtual screen](docs/VIRTUAL_SCREEN.md).
 - **MCP:** connect remote tools over Streamable HTTP, with optional bearer-token authentication. Enable tools individually to use them alongside local tools.
 
 ### Agent runtime
@@ -63,7 +66,7 @@ The runtime also manages streaming events, steering, cancellation, and increment
 
 ## A terminal designed for mobile
 
-You can use Eta's terminal yourself or let the agent use it. Each session retains its working directory and environment. The compact view groups input and output by command; the PTY console supports TUIs, keyboard shortcuts, and ANSI rendering. Asynchronous commands and daemon tasks have logs and explicit stop controls.
+You can use Eta's terminal yourself or let the agent use it. Each session retains its working directory and environment. The PTY console is the default view and runs TUIs such as Claude Code, Codex, and Kimi Code: input goes straight to the terminal, an extra-keys bar provides Esc, Ctrl/Alt, arrows, Enter, and paste, and the grid resizes with the soft keyboard. The compact view groups input and output by command. Asynchronous commands and daemon tasks have logs and explicit stop controls.
 
 - **Linux environments:** choose Alpine or Debian. PRoot works without root; rooted devices can also use chroot. The backends have separate installations, with no automatic data migration. PRoot's simulated root identity does not grant Android system privileges.
 - **Development tools:** install Python, Node.js, SSH, APK analysis tools, and Kimi Code as needed.
@@ -79,7 +82,7 @@ Eta's AI features require **your own model-provider API key**. Built-in provider
 
 The provider layer supports OpenAI-compatible Chat Completions, the Responses API, and Anthropic Messages, including SSE streaming, tool calling, image input, and reasoning content. Configure custom endpoints, headers, and request bodies; fetch model lists or add models manually; and override context windows and reasoning effort. Available features depend on the model and API. Some Responses providers also support server-side web search.
 
-Automatic compaction needs the model's context window in tokens, set under Settings → Model Providers. Without it, chat still works and manual compaction remains available. Automatic context compaction is enabled by default under Settings → Context & Extensions; changes apply to the next run, and manual compaction remains available when disabled. Automatic compaction uses the provider's reported input usage and this configured window. Eta does not fill in missing windows or estimate request tokens; manual compaction remains available when input usage is absent.
+Automatic compaction needs the model's context window in tokens, set under Settings → Model Providers. When fetching models, windows reported by the provider are filled in automatically. Without it, chat still works and manual compaction remains available. Automatic context compaction is enabled by default under Settings → Context & Extensions; changes apply to the next run, and manual compaction remains available when disabled. Automatic compaction uses the provider's reported input usage and this configured window. Eta does not fill in missing windows or estimate request tokens; manual compaction remains available when input usage is absent.
 
 ## System assistant entry points
 
@@ -170,12 +173,16 @@ These implementation notes are currently in Chinese:
 - [Device support and permissions](docs/ROOTLESS_SUPPORT.md): unrooted and rooted devices, the file workspace, and background execution.
 - [Technical implementation](docs/TECHNICAL.md): system tools, data retrieval, browser, terminal, and system integration.
 - [Agent Runtime](docs/AGENT_RUNTIME.md): the agent loop, providers, steering, transcripts, and result recovery.
+- [Experience learning](docs/EXPERIENCE_LEARNING.md): background review, user skill updates, and permission boundaries.
+- [Automation](docs/AUTOMATION.md): model tools, triggers, rules, and scheduling limits.
+- [Root virtual screen](docs/VIRTUAL_SCREEN.md): the experimental display and notification approval flow.
 - [HyperOS system entry points](docs/HYPEROS_SYSTEM_ENTRY.md): power-button and Circle to Search integration, requirements, and validation coverage.
 - [Native terminal components](docs/TERMINAL_NATIVE.md): PTY and PRoot components, and rebuilding the bundled source.
 
 ## References and acknowledgements
 
 - [Pi Coding Agent](https://github.com/earendil-works/pi): the main reference for Eta's agent runtime, including the agent loop, tool calling, steering, and transcript state management.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent): design references for background experience review, skill management, and task scheduling.
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): a reference project for AI agents on Android.
 - [libxposed API](https://github.com/libxposed/api): the modern Xposed API.
 - [Miuix](https://github.com/compose-miuix-ui/miuix): the UI component library.

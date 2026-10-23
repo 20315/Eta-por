@@ -14,6 +14,7 @@ activityCompose = "1.13.0"
 intellijMarkdown = "0.7.16"
 datastore = "1.2.1"
 okhttp = "5.5.0"
+nimbusJoseJwt = "10.10"
 jsoup = "1.23.2"
 desugarJdkLibs = "2.1.5"
 kotlinx-serialization = "1.11.0"
@@ -34,6 +35,7 @@ libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "li
 libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "libxposedService" }
 dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
 miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-android", version.ref = "miuix" }
+miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }
 miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
 miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-android", version.ref = "miuix" }
@@ -51,6 +53,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-sse = { group = "com.squareup.okhttp3", name = "okhttp-sse", version.ref = "okhttp" }
+nimbus-jose-jwt = { group = "com.nimbusds", name = "nimbus-jose-jwt", version.ref = "nimbusJoseJwt" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 desugar-jdk-libs-nio = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugarJdkLibs" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }

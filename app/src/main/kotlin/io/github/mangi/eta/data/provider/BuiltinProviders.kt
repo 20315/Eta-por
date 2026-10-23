@@ -21,6 +21,10 @@ internal object BuiltinProviders {
     const val STEPFUN_ID = "builtin-stepfun"
     const val SILICONFLOW_ID = "builtin-siliconflow"
     const val OPENROUTER_ID = "builtin-openrouter"
+    const val XAI_ID = "builtin-xai"
+
+    /** 定制版只保留这两条内置：它们用于订阅账号（Codex / Grok）登录，删掉就没有登录入口了。 */
+    val SUBSCRIPTION_PROVIDER_IDS: List<String> = listOf(OPENAI_ID, XAI_ID)
 
     val PROVIDERS: List<ProviderSetting> = listOf(
         OpenAiCompatibleProviderSetting(
@@ -113,7 +117,16 @@ internal object BuiltinProviders {
             isBuiltIn = true,
             sortOrder = 9,
             systemPrompt = DEFAULT_SYSTEM_PROMPT
-        )
+        ),
+        OpenAiCompatibleProviderSetting(
+            id = XAI_ID,
+            name = "xAI",
+            baseUrl = "https://api.x.ai/v1",
+            sourceType = ProviderSourceTypes.XAI,
+            isBuiltIn = true,
+            sortOrder = 10,
+            systemPrompt = DEFAULT_SYSTEM_PROMPT,
+        ),
     )
 
     fun providerById(id: String): ProviderSetting? =

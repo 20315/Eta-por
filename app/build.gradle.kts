@@ -39,8 +39,16 @@ android {
         minSdk = 33
         targetSdk = 37
         // versionCode 规则：yyyyMMdd + 两位当日序号（01 起），发版时随 versionName 一起手动递增。
-        versionCode = 2026100701
-        versionName = "3.3.0"
+        // 跨零点必须换成当天日期、序号归 01，不能接着前一天的号往下加——
+        // 之前从 2026102020 起就一直在沿用 10-20 的日期，日期不再反映实际构建日。
+        versionCode = 2026102259
+        versionName = "3.3.3"
+        testInstrumentationRunner = "io.github.mangi.eta.validation.DeviceValidationRunner"
+
+        ndk {
+            // 同时过滤本地与依赖 AAR 的原生库，确保 APK 仅包含 ARM64。
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -80,12 +88,12 @@ android {
     }
 
     buildFeatures {
-        buildConfig = false
+        buildConfig = true
         compose = true
     }
 
     androidResources {
-        localeFilters += listOf("en", "b+zh+Hans", "b+zh+Hant")
+        localeFilters += listOf("b+zh+Hans")
     }
 
     packaging {
@@ -150,6 +158,7 @@ dependencies {
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
     implementation(libs.miuix.ui)
+    implementation(libs.miuix.icons)
     implementation(libs.miuix.blur)
     implementation(libs.miuix.nav)
     implementation(libs.miuix.preference)
@@ -171,6 +180,7 @@ dependencies {
 
     // OkHttp：替代 HttpURLConnection，支持 SSE
     implementation(libs.okhttp)
+    implementation(libs.nimbus.jose.jwt)
     implementation(libs.okhttp.sse)
 
     // Kotlinx Serialization：Provider 设置与运行时配置 JSON
@@ -183,4 +193,12 @@ dependencies {
     testImplementation(libs.json)
     testImplementation(libs.room.testing)
     testImplementation(libs.robolectric)
+}
+
+// Compose 编译器会额外生成「Compose 映射报告」任务：只产出报告，不影响 APK 内容，
+// 但在本机 PRoot 环境里偶发静默卡死（进程无声消失、日志停在那一行）。直接关掉。
+tasks.configureEach {
+    if (name.endsWith("ComposeMappingErrors") || name.endsWith("ComposeMapping")) {
+        enabled = false
+    }
 }
