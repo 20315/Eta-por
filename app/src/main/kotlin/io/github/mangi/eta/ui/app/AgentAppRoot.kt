@@ -363,6 +363,13 @@ fun AgentAppRoot(
         conversationNavigatorOpen = false
     }
 
+    fun createConversationInCategory(categoryId: String?) {
+        focusManager.clearFocus()
+        agentState.createConversationInCategory(categoryId)
+        conversationPaneOpen = false
+        conversationNavigatorOpen = false
+    }
+
     fun openAccessibilitySettings() {
         focusManager.clearFocus()
         // Android's per-service settings action is not exposed in the public SDK.
@@ -429,6 +436,7 @@ fun AgentAppRoot(
             onDismissConversationPane = { conversationPaneOpen = false },
             onSearchConversations = { query -> agentState.updateSearchQuery(query) },
             onNewConversation = { createConversation() },
+            onNewConversationInCategory = { categoryId -> createConversationInCategory(categoryId) },
             onOpenTerminal = { pushRoute(AppRoute.Terminal) },
             onLaunchKimiWeb = {
                 requestExecutionNotifications()

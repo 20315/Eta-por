@@ -138,6 +138,8 @@ internal class AgentAppState(
 
     @Volatile
     private var conversationPersistence = AgentConversationPersistence(initialConversations)
+    /** 新建会话待落库的分类（会话在首次发送时才真正生成）。 */
+    private var pendingConversationCategory: String? = null
     private var currentReasoningCapabilities: ModelReasoningCapabilities? = null
     private var providers: List<ProviderSetting> = emptyList()
     private var defaultModelId: String? = null
@@ -1096,7 +1098,17 @@ internal class AgentAppState(
         persistConversations()
     }
 
+    /** 顶栏新建：沿用当前会话所属分类；没有分类就落到未分类。 */
     fun createConversation() {
+        createConversationInCategory(selectedConversationId?.let { conversationCategoryIds[it] })
+    }
+
+    /**
+     * 在指定分类下新建会话。分类归属要等会话真正生成（首次发送）时才写库，
+     * 所以这里先记下来，分配新会话 id 时一并落库。
+     */
+    fun createConversationInCategory(categoryId: String?) {
+        pendingConversationCategory = categoryId?.takeIf { candidate -> conversationCategories.any { it.id == candidate } }
         if (homeState.messageEdit != null) cancelMessageEdit()
         // 新建会话前同样把草稿写回，别把没发出去的字丢了。
         selectedConversationId
@@ -1286,6 +1298,15 @@ internal class AgentAppState(
             runCatching { conversationCategories.forEach { AgentConversationStore.saveCategory(appContext, it) } }
                 .onFailure { error -> AndroidAgentLogger.warn("Conversation category reorder failed: type=${error.safeLogType()}") }
         }
+    }
+
+
+    /** 分配新会话 id；若此前指定了分类，就在这里把归属写进库。 */
+    private fun allocateConversationId(): String {
+        val id = newConversationId()
+        pendingConversationCategory?.let { categoryId -> setConversationCategory(id, categoryId) }
+        pendingConversationCategory = null
+        return id
     }
 
     fun exportConversationMarkdown(conversationId: String): String? {
@@ -1498,7 +1519,7 @@ internal class AgentAppState(
             return
         }
 
-        val conversationId = selectedConversationId ?: newConversationId().also {
+        val conversationId = selectedConversationId ?: allocateConversationId().also {
             selectedConversationId = it
             ChatDraftStore.save(appContext, it, "")
         }
@@ -1516,7 +1537,7 @@ internal class AgentAppState(
         conversationId: String?,
         item: QueuedMessageUi,
     ) {
-        val targetConversationId = conversationId ?: selectedConversationId ?: newConversationId().also {
+        val targetConversationId = conversationId ?: selectedConversationId ?: allocateConversationId().also {
             selectedConversationId = it
         }
         val state = conversationsById[targetConversationId] ?: homeState

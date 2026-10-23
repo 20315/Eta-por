@@ -153,6 +153,8 @@ internal fun ConversationPanePanel(
     listState: androidx.compose.foundation.lazy.LazyListState,
     onSearchChange: (String) -> Unit,
     onNewConversation: () -> Unit,
+    /** 在指定分类下新建会话（null 表示未分类）。 */
+    onNewConversationInCategory: (String?) -> Unit = { _ -> onNewConversation() },
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
     onMoveToCategory: (ConversationSummaryUi) -> Unit,
@@ -199,6 +201,7 @@ internal fun ConversationPanePanel(
     var dragTranslateY by remember { mutableFloatStateOf(0f) }
     var contentRootTop by remember { mutableFloatStateOf(0f) }
     var dragPointerRootY by remember { mutableFloatStateOf(0f) }
+    var dragGrabOffsetPx by remember { mutableFloatStateOf(0f) }
     var menuConversationId by remember { mutableStateOf<String?>(null) }
     var swallowClickConversationId by remember { mutableStateOf<String?>(null) }
     val dragScope = rememberCoroutineScope()
@@ -326,20 +329,7 @@ internal fun ConversationPanePanel(
                                     draggingConversation = conversation
                                     dragTranslateY = 0f
                                     dragPointerRootY = offset.y + contentRootTop
-                                    dragMenuJob?.cancel()
-                                    // 长按后 280ms 内没动：当成长按菜单（不需要松手）。
-                                    dragMenuJob = dragScope.launch {
-                                        kotlinx.coroutines.delay(280)
-                                        if (dragTranslateY == 0f && draggingConversation?.id == conversation.id) {
-                                            draggingConversation = null
-                                            hoverCategoryKey = null
-                                            // 已选中的会话右侧有三点菜单，长按不再抢它。
-                                            if (conversation.id != state.selectedConversationId) {
-                                                menuConversationId = conversation.id
-                                                swallowClickConversationId = conversation.id
-                                            }
-                                        }
-                                    }
+                                    dragGrabOffsetPx = (offset.y.toInt() - info.offset).coerceAtLeast(0).toFloat()
                                 }
                             },
                             onDrag = { change, dragAmount ->
@@ -351,8 +341,6 @@ internal fun ConversationPanePanel(
                                 updateHover(dragPointerRootY)
                             },
                             onDragEnd = {
-                                dragMenuJob?.cancel()
-                                dragMenuJob = null
                                 if (draggingConversation != null) dropAt(dragPointerRootY)
                             },
                             onDragCancel = { cancelDrag() },
@@ -425,6 +413,8 @@ internal fun ConversationPanePanel(
                             },
                             highlighted = hoverCategoryKey != null &&
                                 hoverCategoryKey == (group.section as? ConversationDrawerSection.Category)?.let { it.id ?: "" },
+                                isCategorySection = group.section is ConversationDrawerSection.Category,
+                                onNewConversationInCategory = onNewConversationInCategory,
                                 onEditCategory = { id, currentName ->
                                     categoryEditing = CategoryEditTarget.Rename(id, currentName)
                                 },
@@ -469,14 +459,12 @@ internal fun ConversationPanePanel(
                 }
             }
             draggingConversation?.let { ghostConversation ->
-                val info = listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.key == ghostConversation.id }
-                if (info != null) {
+                if (true) {
                     // 浮层用 Popup 画：脱离 LazyColumn 的裁剪和绘制顺序，拖动时不会被下面的行盖住。
                     androidx.compose.ui.window.Popup(
                         offset = androidx.compose.ui.unit.IntOffset(
                             x = 0,
-                            y = (contentRootTop + info.offset + dragTranslateY).toInt(),
+                            y = (dragPointerRootY - dragGrabOffsetPx).toInt(),
                         ),
                         properties = androidx.compose.ui.window.PopupProperties(
                             focusable = false,
@@ -488,7 +476,7 @@ internal fun ConversationPanePanel(
                         ConversationDragGhost(
                             conversation = ghostConversation,
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .width(width)
                                 .padding(horizontal = ConversationPanelMetrics.PaneHorizontalPadding),
                         )
                     }
@@ -638,6 +626,8 @@ private fun ConversationSectionHeader(
     onEditCategory: (String, String) -> Unit,
     onMoveCategory: (String, Int) -> Unit,
     onDeleteCategory: (String) -> Unit,
+    isCategorySection: Boolean = false,
+    onNewConversationInCategory: (String?) -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val headerLabel = group.localizedLabel()
@@ -681,7 +671,7 @@ private fun ConversationSectionHeader(
         Text(headerLabel, color = MiuixTheme.colorScheme.onSurface,
             style = MiuixTheme.textStyles.body1, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f).semantics { heading() })
-        if (categoryId != null) {
+        if (categoryId != null && collapsed) {
             Box {
                 IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
                     Icon(
@@ -745,6 +735,18 @@ private fun ConversationSectionHeader(
                 style = MiuixTheme.textStyles.footnote1, fontSize = 12.sp,
                 modifier = Modifier.padding(start = 6.dp),
             )
+        }
+        if (isCategorySection) {
+            IconButton(
+                onClick = { onNewConversationInCategory(categoryId) },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = stringResource(R.string.action_new_conversation),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
     }
@@ -894,7 +896,7 @@ private fun ConversationTextRow(
             }
             // 三点只在选中行出现：常驻会让每行都多一个图标，侧栏本来就密；
             // 选中态本身表示「正在操作这条」，三点放在这里最自然。
-            if (selected && !batchMode) {
+            if (!batchMode) {
                 IconButton(
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
