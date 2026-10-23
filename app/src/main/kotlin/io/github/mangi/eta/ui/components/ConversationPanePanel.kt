@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -201,10 +203,12 @@ internal fun ConversationPanePanel(
     var dragMenuJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // 悬停高亮：拖动时命中的分组标题会亮起，让落点可见。
     var hoverCategoryKey by remember { mutableStateOf<String?>(null) }
+    // 命中的含义扩成「这一段落」：从某个分类标题开始，到下一个分类标题之前的区域都算它。
+    // 于是拖到分类下面的会话条目上也能落进该分类，不必精确压在标题上。
     fun hitCategory(y: Float): String? =
         categoryBounds.entries
-            .filter { y >= it.value.top && y <= it.value.bottom }
-            .minByOrNull { entry -> kotlin.math.abs(entry.value.center.y - y) }
+            .sortedBy { it.value.top }
+            .lastOrNull { y >= it.value.top }
             ?.key
     fun updateHover(y: Float) {
         val key = hitCategory(y)
@@ -224,6 +228,24 @@ internal fun ConversationPanePanel(
         dragTranslateY = 0f
         dragMenuJob?.cancel()
         dragMenuJob = null
+    }
+    // 拖到列表上下边缘时自动滚动，否则分类在屏幕外就拖不过去。
+    val dragDensity = LocalDensity.current
+    val autoScrollEdgePx = with(dragDensity) { 64.dp.toPx() }
+    LaunchedEffect(draggingConversation?.id) {
+        if (draggingConversation == null) return@LaunchedEffect
+        while (draggingConversation != null) {
+            val viewport = listState.layoutInfo.viewportSize.height.toFloat()
+            val top = contentRootTop
+            val bottom = top + viewport
+            val step = with(dragDensity) { 12.dp.toPx() }
+            if (dragPointerRootY < top + autoScrollEdgePx) {
+                listState.scrollBy(-step)
+            } else if (dragPointerRootY > bottom - autoScrollEdgePx) {
+                listState.scrollBy(step)
+            }
+            kotlinx.coroutines.delay(16)
+        }
     }
         val capabilities = rememberDeviceCapabilities()
     val groups = remember(state.conversations, state.categories) {
@@ -309,7 +331,10 @@ internal fun ConversationPanePanel(
                                         if (dragTranslateY == 0f && draggingConversation?.id == conversation.id) {
                                             draggingConversation = null
                                             hoverCategoryKey = null
-                                            menuConversationId = conversation.id
+                                            // 已选中的会话右侧有三点菜单，长按不再抢它。
+                                            if (conversation.id != state.selectedConversationId) {
+                                                menuConversationId = conversation.id
+                                            }
                                         }
                                     }
                                 }
@@ -416,7 +441,10 @@ internal fun ConversationPanePanel(
                                 batchMode = batchMode,
                                 checked = conversation.id in selectedIds,
                                 onClick = {
-                                    if (batchMode) {
+                                    if (menuConversationId == conversation.id) {
+                                        // 长按刚弹出的菜单：这一下点击只关菜单，不要顺带切会话。
+                                        menuConversationId = null
+                                    } else if (batchMode) {
                                         selectedIds = if (conversation.id in selectedIds) selectedIds - conversation.id else selectedIds + conversation.id
                                     } else {
                                         onConversationSelected(conversation.id)
@@ -762,7 +790,7 @@ private fun ConversationTextRow(
     // 本节自身在屏幕上的纵向位置：拖动时用它把手指坐标换算成屏幕坐标，判断落点。
     val hapticFeedback = LocalHapticFeedback.current
 
-    Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragging) 1f else 0f)) {
+    Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragging) 10f else 0f)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
