@@ -301,20 +301,6 @@ internal fun AgentChatInputBar(
     ) {
         if (recognitionEnabled) SpeechInputFeedback(dictation)
         AnimatedVisibility(
-            visible = queuedMessages.isNotEmpty(),
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(100)) + shrinkVertically(tween(150)),
-        ) {
-            AgentChatQueueStrip(
-                queuedMessages = queuedMessages,
-                isStreaming = isStreaming,
-                onSteer = onSteerQueuedMessage,
-                onRecall = { id -> onRecallQueuedMessage(id, textFieldState.text.toString()) },
-                onRemove = onRemoveQueuedMessage,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-        AnimatedVisibility(
             visible = pendingFileReferences.isNotEmpty(),
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(100)) + shrinkVertically(tween(160)),
