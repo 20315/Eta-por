@@ -248,24 +248,70 @@ internal fun MarkdownFileDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 回到原来的底部弹层：自带跟手下拉、系统返回同步退场动画，并顶到顶栏下方。
-    // 注意：它不能在别的 sheet 里嵌套使用，因此宿主调用方已提升到页面层级。
+    // Dialog 打底（窗口级，工作区 sheet 内嵌也能显示），里面自绘底部卡片：
+    // 拖拽跟手、松手回弹或关闭，进出场都有动画；不再用会挂不上窗口的 OverlayBottomSheet。
     val density = androidx.compose.ui.platform.LocalDensity.current
     val windowHeight = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height
-    val sheetHeight = (with(density) { windowHeight.toDp() } - 56.dp).coerceAtLeast(320.dp)
+    val cardHeight = (windowHeight * 0.88f).toInt()
 
-    OverlayBottomSheet(
-        show = visible,
-        title = name,
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = { requestClose() },
-        insideMargin = DpSize(0.dp, 0.dp),
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(sheetHeight),
-        ) {
-            Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val cardHeightPx = with(density) { cardHeight.toFloat() }
+            // 0 = 完全展开，1 = 完全收起（在屏幕下方）
+            val progress = remember { Animatable(1f) }
+            LaunchedEffect(visible) {
+                if (visible) progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
+                else progress.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
+            }
+            // 透明遮罩：只负责「点空白关闭」，不压暗（菜单本身也不需要灰底）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(interactionSource = null, indication = null) { requestClose() },
+            )
+            var dragOffset by remember { mutableFloatStateOf(0f) }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(with(density) { cardHeightPx.toDp() })
+                    .offset { IntOffset(0, (progress.value * cardHeightPx + dragOffset).roundToInt()) }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount > 0 || dragOffset > 0) dragOffset += dragAmount
+                            },
+                            onDragEnd = {
+                                // 拖过 1/6 高度就关，否则回弹
+                                if (dragOffset > cardHeightPx / 6f) {
+                                    dragOffset = 0f
+                                    requestClose()
+                                } else {
+                                    dragOffset = 0f
+                                }
+                            },
+                            onDragCancel = { dragOffset = 0f },
+                        )
+                    }
+                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                    .background(MiuixTheme.colorScheme.surface)
+                    .navigationBarsPadding(),
+            ) {
+                // 顶部拖拽提示条
+                Box(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .align(Alignment.CenterHorizontally)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                )
             // 标题行：文件名 +（与文件名不同时）路径，右侧是编辑与更多
             Row(
                 modifier = Modifier
@@ -369,7 +415,6 @@ internal fun MarkdownFileDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
                         .clickable { menuOpen = false },
                 )
                 Column(
