@@ -3,6 +3,9 @@ package io.github.mangi.eta.ui.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
@@ -701,7 +706,7 @@ private fun ConversationTextRow(
     val longPressMenuThresholdPx = with(LocalDensity.current) { 6.dp.toPx() }
     val hapticFeedback = LocalHapticFeedback.current
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragLift != 0f) 2f else 0f)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -723,34 +728,43 @@ private fun ConversationTextRow(
                     shadowElevation = if (lift) 8f else 0f
                 }
                 .onGloballyPositioned { coords -> rowTop = coords.boundsInRoot().top }
-                .pointerInput(conversation.id) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = {
-                            dragDistance = 0f
-                            lastDropY = rowTop
-                            onDragStart()
-                        },
-                        onDrag = { change, dragAmount ->
-                            dragDistance += kotlin.math.abs(dragAmount.x) + kotlin.math.abs(dragAmount.y)
-                            dragLift += dragAmount.y
-                            lastDropY = rowTop + change.position.y
-                            onDragAt(lastDropY)
-                        },
-                        onDragEnd = {
-                            dragLift = 0f
-                            if (dragDistance < longPressMenuThresholdPx) {
-                                // 长按后没怎么动：当作打开操作菜单（里面有「移动到分类」）。
-                                onDragCancel()
-                                showActionMenu = true
-                            } else {
-                                onDropAt(lastDropY)
+                .zIndex(if (dragLift != 0f) 2f else 0f)
+                .pointerInput(conversation.id, rowTop) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        // 长按成立后才进入拖拽；按住不动松手＝呼出操作菜单。
+                        val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                        onDragStart()
+                        var moved = false
+                        var travelled = 0f
+                        onDragAt(rowTop + longPress.position.y)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                change.consume()
+                                break
                             }
-                        },
-                        onDragCancel = {
-                            dragLift = 0f
+                            val delta = change.positionChange()
+                            if (delta != androidx.compose.ui.geometry.Offset.Zero) {
+                                travelled += kotlin.math.abs(delta.x) + kotlin.math.abs(delta.y)
+                                if (travelled > longPressMenuThresholdPx) moved = true
+                                if (moved) {
+                                    dragLift += delta.y
+                                    lastDropY = rowTop + change.position.y
+                                    onDragAt(lastDropY)
+                                }
+                                change.consume()
+                            }
+                        }
+                        dragLift = 0f
+                        if (moved) {
+                            onDropAt(lastDropY)
+                        } else {
                             onDragCancel()
-                        },
-                    )
+                            showActionMenu = true
+                        }
+                    }
                 }
                 .clickable(onClick = onClick)
                 .padding(
@@ -1033,8 +1047,9 @@ private fun List<ConversationSummaryUi>.groupForDrawer(categories: List<Pair<Str
             )
         }
         val loose = rest.filter { it.categoryId == null || !known.containsKey(it.categoryId) }
-        // 未分类组始终保留：空分类都会显示，未分类也一样，否则会话全部分类后就没法拖回去了。
-        categorizedGroups += ConversationDrawerGroup(ConversationDrawerSection.Category(null, ""), loose)
+        if (loose.isNotEmpty()) {
+            categorizedGroups += ConversationDrawerGroup(ConversationDrawerSection.Category(null, ""), loose)
+        }
         return categorizedGroups
     }
     if (isEmpty()) return emptyList()
