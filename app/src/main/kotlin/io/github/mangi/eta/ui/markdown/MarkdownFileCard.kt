@@ -256,163 +256,173 @@ internal fun MarkdownFileDialog(
 
     // 内容只写一份，两种外壳共用。
     val body: @Composable () -> Unit = {
-        Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-        // 标题行：文件名 +（与文件名不同时）路径，右侧编辑与更多
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (path.isNotBlank() && path != name) {
+            // 标题行：文件名（+ 路径）在左，编辑与更多在右
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = path,
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        text = name,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                }
-            }
-            IconButton(
-                onClick = {
-                    val target = editRealPath?.invoke() ?: path
-                    if (openInMtEditor(context, target)) {
-                        refreshOnResume = true
-                    } else {
-                        Toast.makeText(context, "没有找到可用的编辑器", Toast.LENGTH_SHORT).show()
+                    if (path.isNotBlank() && path != name) {
+                        Text(
+                            text = path,
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                },
-                minWidth = 36.dp,
-                minHeight = 36.dp,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Edit,
-                    contentDescription = "用 MT 管理器编辑",
-                    modifier = Modifier.size(18.dp),
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            Box {
+                }
                 IconButton(
-                    onClick = { menuOpen = true },
+                    onClick = {
+                        val target = editRealPath?.invoke() ?: path
+                        if (openInMtEditor(context, target)) {
+                            refreshOnResume = true
+                        } else {
+                            Toast.makeText(context, "没有找到可用的编辑器", Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     minWidth = 36.dp,
                     minHeight = 36.dp,
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = "用 MT 管理器编辑",
+                        modifier = Modifier.size(18.dp),
                         tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
-                // 菜单以这个按钮为锚点弹出（贴右上角），不再以整张卡片为锚。
-        // 更多菜单：与对话页一致的弹出层（WindowListPopup），不占布局、不会挤压正文
-                WindowListPopup(
-                    show = menuOpen,
-                    popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
-                    alignment = PopupPositionProvider.Align.BottomEnd,
-                    onDismissRequest = { menuOpen = false },
-        ) {
-            ListPopupColumn {
-                DropdownImpl(
-                    item = DropdownItem(text = "保存到设备", icon = { modifier ->
-                        Icon(Icons.Rounded.Download, contentDescription = null, modifier = modifier.size(18.dp))
-                    }),
-                    optionSize = 3,
-                    isSelected = false,
-                    index = 0,
-                    onSelectedIndexChange = {
-                        menuOpen = false
-                        saveToDevice.launch(name)
-                    },
-                )
-                DropdownImpl(
-                    item = DropdownItem(text = "系统打开", icon = { modifier ->
-                        Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = modifier.size(18.dp))
-                    }),
-                    optionSize = 3,
-                    isSelected = false,
-                    index = 1,
-                    onSelectedIndexChange = {
-                        menuOpen = false
-                        runCatching {
-                            val uri = stageShareFile(context, name, text)
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW)
-                                    .setDataAndType(uri, "text/markdown")
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                // 菜单以 ⋯ 按钮为锚点，贴着它弹出（与对话页一致）
+                Box {
+                    IconButton(
+                        onClick = { menuOpen = true },
+                        minWidth = 36.dp,
+                        minHeight = 36.dp,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    WindowListPopup(
+                        show = menuOpen,
+                        popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+                        alignment = PopupPositionProvider.Align.BottomEnd,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        ListPopupColumn {
+                            DropdownImpl(
+                                item = DropdownItem(text = "保存到设备", icon = { modifier ->
+                                    Icon(
+                                        Icons.Rounded.Download,
+                                        contentDescription = null,
+                                        modifier = modifier.size(18.dp),
+                                    )
+                                }),
+                                optionSize = 3,
+                                isSelected = false,
+                                index = 0,
+                                onSelectedIndexChange = {
+                                    menuOpen = false
+                                    saveToDevice.launch(name)
+                                },
                             )
-                        }
-                    },
-                )
-                DropdownImpl(
-                    item = DropdownItem(text = "分享文件", icon = { modifier ->
-                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = modifier.size(18.dp))
-                    }),
-                    optionSize = 3,
-                    isSelected = false,
-                    index = 2,
-                    onSelectedIndexChange = {
-                        menuOpen = false
-                        runCatching {
-                            val uri = stageShareFile(context, name, text)
-                            context.startActivity(
-                                Intent.createChooser(
-                                    Intent(Intent.ACTION_SEND)
-                                        .setType("text/markdown")
-                                        .putExtra(Intent.EXTRA_STREAM, uri)
-                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                                    null,
-                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            DropdownImpl(
+                                item = DropdownItem(text = "系统打开", icon = { modifier ->
+                                    Icon(
+                                        Icons.AutoMirrored.Rounded.OpenInNew,
+                                        contentDescription = null,
+                                        modifier = modifier.size(18.dp),
+                                    )
+                                }),
+                                optionSize = 3,
+                                isSelected = false,
+                                index = 1,
+                                onSelectedIndexChange = {
+                                    menuOpen = false
+                                    runCatching {
+                                        val uri = stageShareFile(context, name, text)
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW)
+                                                .setDataAndType(uri, "text/markdown")
+                                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                },
                             )
-                        }
-                    },
-                )
-            }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            StaticMarkdown(
-                content = text,
-                tone = MarkdownTone.Answer,
-                codeWrap = true,
-                modifier = Modifier.fillMaxWidth(),
-                onTaskToggle = { offset ->
-                    val next = toggleTaskAt(text, offset)
-                    if (next != text) {
-                        text = next
-                        dirty = true
-                        scope.launch {
-                            val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, next) }
-                            if (error == null) {
-                                dirty = false
-                            } else {
-                                Toast.makeText(context, "自动保存失败：$error", Toast.LENGTH_LONG).show()
-                            }
+                            DropdownImpl(
+                                item = DropdownItem(text = "分享文件", icon = { modifier ->
+                                    Icon(
+                                        Icons.Rounded.Share,
+                                        contentDescription = null,
+                                        modifier = modifier.size(18.dp),
+                                    )
+                                }),
+                                optionSize = 3,
+                                isSelected = false,
+                                index = 2,
+                                onSelectedIndexChange = {
+                                    menuOpen = false
+                                    runCatching {
+                                        val uri = stageShareFile(context, name, text)
+                                        context.startActivity(
+                                            Intent.createChooser(
+                                                Intent(Intent.ACTION_SEND)
+                                                    .setType("text/markdown")
+                                                    .putExtra(Intent.EXTRA_STREAM, uri)
+                                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                                                null,
+                                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                },
+                            )
                         }
                     }
-                },
-            )
-        }
-        }
-        }
+                }
+            }
+            // 正文占满剩余高度，独立滚动
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                StaticMarkdown(
+                    content = text,
+                    tone = MarkdownTone.Answer,
+                    codeWrap = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onTaskToggle = { offset ->
+                        val next = toggleTaskAt(text, offset)
+                        if (next != text) {
+                            text = next
+                            dirty = true
+                            scope.launch {
+                                val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, next) }
+                                if (error == null) {
+                                    dirty = false
+                                } else {
+                                    Toast.makeText(context, "自动保存失败：$error", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 
