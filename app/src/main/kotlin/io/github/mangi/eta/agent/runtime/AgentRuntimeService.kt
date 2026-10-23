@@ -63,8 +63,6 @@ import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import kotlin.concurrent.thread
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 import top.yukonga.miuix.kmp.squircle.LocalSquircleEnabled
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -778,7 +776,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             return
         }
         sessions[request.runId] = session
-        updateKeepScreenOn()
         RunProgressNotifier.noteConcurrency(runningSessionCount())
         RunProgressNotifier.start(this)
         RunProgressNotifier.noteSessionLimit(sessionLimit, MAX_CONCURRENT_RUNS)
@@ -853,7 +850,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         }
 
-        updateKeepScreenOn()
         thread(name = "agent-runtime") {
             try {
                 executeRun(session, request, reviewGeneration)
@@ -972,7 +968,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             lastCompletedRunContext = completedContext
             rememberFinishedSession(session.runId)
             sessions.remove(session.runId)
-            updateKeepScreenOn()
             if (sessions.isEmpty()) RunProgressNotifier.stop(this, pinned = fluidPinned())
             else RunProgressNotifier.noteConcurrency(runningSessionCount())
             if (!needsOverlay) return@post
@@ -1261,7 +1256,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun requestPause() {
         sessions.values.forEach { session -> session.controller.pause() }
-        updateKeepScreenOn()
         RunProgressNotifier.setPaused(true)
         state.value = state.value.copy(
             phase = AgentOverlayPhase.PAUSED,
@@ -1271,7 +1265,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun requestResume() {
         sessions.values.forEach { session -> session.controller.resume() }
-        updateKeepScreenOn()
         RunProgressNotifier.setPaused(false)
         state.value = state.value.copy(
             phase = AgentOverlayPhase.RUNNING,
@@ -1369,19 +1362,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         showOverlay()
     }
 
-    /** 有任务正在跑（未暂停、未取消）时保持屏幕常亮。 */
-    private fun updateKeepScreenOn() {
-        val active = sessions.values.any { session ->
-            !session.isTerminal && !session.controller.isPaused && !session.controller.isCancelled
-        }
-        setKeepScreenOn(active)
-    }
-
-    private fun setKeepScreenOn(enabled: Boolean) {
-        keepScreenOnState.value = enabled
-        capsuleView?.keepScreenOn = enabled
-    }
-
     private fun capsuleHidden(): Boolean = runCatching {
         runBlocking { SettingsDataStore.settings() }.overlayCapsuleHidden
     }.getOrDefault(false)
@@ -1436,7 +1416,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         savedCapsuleX = savedOverlay.overlayCapsulePosX
         savedCapsuleY = savedOverlay.overlayCapsulePosY
         val capsuleLp = capsuleLayoutParams()
-        capsule.keepScreenOn = keepScreenOn.value
         runCatching { wm.addView(capsule, capsuleLp) }.onFailure { throwable ->
             AndroidAgentLogger.warnThrottled("runtime_capsule_add_view_failed") {
                 "Agent runtime capsule addView failed: type=${throwable.safeLogType()}"
@@ -2025,10 +2004,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     internal companion object {
-        /** 只投影到 App 与 GUI 浮层的现有窗口，窗口不可见时由系统恢复息屏。 */
-        private val keepScreenOnState = MutableStateFlow(false)
-        val keepScreenOn = keepScreenOnState.asStateFlow()
-
         /** 同时运行的会话上限：模型推理并行，工具执行在工具层排队。 */
         /** 会话并发的硬上限；实际并发由 AgentMemoryGate.sessionLimit() 按剩余内存决定。 */
         const val MAX_CONCURRENT_RUNS = 6
@@ -2087,7 +2062,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         /** 注入点击只是一个点，目标控件常贴着胶囊边缘，判定范围向外多留一点。 */
         private const val CAPSULE_CLEARANCE_SLOP_DP = 8
         private const val FALLBACK_SCREEN_CORNER_DP = 28
-        private const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
+        const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
     }
 
     private data class CompletedRunContext(
