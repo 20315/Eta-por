@@ -254,8 +254,19 @@ internal fun ConversationPanePanel(
         }
     }
         val capabilities = rememberDeviceCapabilities()
-    val groups = remember(state.conversations, state.categories) {
-        state.conversations.groupForDrawer(state.categories)
+    // 搜索兜底：状态层已过滤过一轮，这里再按标题/预览过滤一次，避免深层过滤失效时列表纹丝不动。
+    val visibleConversations = remember(state.conversations, query) {
+        if (query.isBlank()) {
+            state.conversations
+        } else {
+            state.conversations.filter { conversation ->
+                conversation.title.contains(query, ignoreCase = true) ||
+                    conversation.preview.contains(query, ignoreCase = true)
+            }
+        }
+    }
+    val groups = remember(visibleConversations, state.categories) {
+        visibleConversations.groupForDrawer(state.categories)
     }
 
     Surface(
@@ -391,7 +402,7 @@ internal fun ConversationPanePanel(
                         }
                     }
                 }
-                if (state.conversations.isEmpty()) {
+                if (visibleConversations.isEmpty()) {
                     item {
                         EmptyConversations(isSearching = query.isNotBlank())
                     }
@@ -729,8 +740,8 @@ private fun ConversationSectionHeader(
                     }
                 }
             }
-        } else if (collapsed) {
-            // 展开状态下不需要指示三角，只有收起时才给一个 ▸ 提示可以点开。
+        } else if (categoryId != null && collapsed) {
+            // 只有真实分类（有 id）、且收起时给一个 ▸；「置顶 / 今天 / 未分类」都不需要三角。
             Text(
                 "▸",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,

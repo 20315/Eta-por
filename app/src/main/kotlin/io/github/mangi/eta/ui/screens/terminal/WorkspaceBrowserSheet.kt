@@ -118,7 +118,6 @@ internal fun WorkspaceBrowserSheet(
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     // 打开方式选择器是否展开
-    var openWithPicker by remember { mutableStateOf(false) }
     var markdownPath by remember { mutableStateOf<String?>(null) }
     var markdownText by remember { mutableStateOf("") }
 
@@ -201,45 +200,6 @@ internal fun WorkspaceBrowserSheet(
                         modifier = Modifier.size(20.dp).rotate(spin),
                         tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
-                }
-                // 打开方式设置：点开是从这个按钮下方展开的菜单，不是屏幕中央的弹窗——
-                // 位置贴着触发点，视线不用跳。
-                Box {
-                    IconButton(onClick = { openWithPicker = true }) {
-                        Icon(
-                            imageVector = Icons.Rounded.Apps,
-                            contentDescription = stringResource(R.string.workspace_browser_open_with),
-                            modifier = Modifier.size(20.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                    val options = remember(openWithPicker) {
-                        if (openWithPicker) openWithOptions(context) else emptyList()
-                    }
-                    WindowListPopup(
-                        show = openWithPicker,
-                        alignment = PopupPositionProvider.Align.End,
-                        onDismissRequest = { openWithPicker = false },
-                    ) {
-                        ListPopupColumn {
-                            options.forEachIndexed { index, option ->
-                                DropdownImpl(
-                                    item = DropdownItem(text = option.label),
-                                    optionSize = options.size,
-                                    isSelected = option.selected,
-                                    index = index,
-                                    onSelectedIndexChange = {
-                                        if (option.packageName == null) {
-                                            WorkspaceOpenWithStore.clear()
-                                        } else {
-                                            WorkspaceOpenWithStore.save(option.packageName)
-                                        }
-                                        openWithPicker = false
-                                    },
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
