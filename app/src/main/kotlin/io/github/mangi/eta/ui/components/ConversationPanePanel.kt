@@ -729,9 +729,10 @@ private fun ConversationSectionHeader(
                     }
                 }
             }
-        } else {
+        } else if (collapsed) {
+            // 展开状态下不需要指示三角，只有收起时才给一个 ▸ 提示可以点开。
             Text(
-                if (collapsed) "▸" else "▾",
+                "▸",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.footnote1, fontSize = 12.sp,
                 modifier = Modifier.padding(start = 6.dp),

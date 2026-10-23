@@ -259,6 +259,7 @@ internal fun AgentChatInputBar(
         }
     }
     val speechSettings by remember { SpeechSettingsRepository.settingsFlow() }.collectAsState(initial = null)
+    var previewImageIndex by remember { mutableStateOf<Int?>(null) }
     val recognitionEnabled = speechSettings?.recognitionEnabled == true
     val dictation = rememberSpeechInput { recognized ->
         textFieldState.edit {
@@ -294,6 +295,15 @@ internal fun AgentChatInputBar(
         }
         wasEditingMessage = isEditingMessage
         syncedVersion = inputSyncVersion
+    }
+
+    // 点缩略图放大预览（与会话内图片预览同一套浮层）。
+    previewImageIndex?.let { index ->
+        ImagePreviewOverlay(
+            images = pendingImages.map { it.dataUrl },
+            initialIndex = index,
+            onDismiss = { previewImageIndex = null },
+        )
     }
 
     Column(
@@ -333,6 +343,7 @@ internal fun AgentChatInputBar(
             PendingImageStrip(
                 images = pendingImages,
                 onRemoveImage = onRemoveImage,
+                onPreviewImage = { index -> previewImageIndex = index },
                 modifier = Modifier.padding(bottom = 8.dp),
             )
         }
@@ -828,6 +839,7 @@ private fun ThinkingEffortChip(
 private fun PendingImageStrip(
     images: List<PendingImageUi>,
     onRemoveImage: (String) -> Unit,
+    onPreviewImage: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -837,12 +849,13 @@ private fun PendingImageStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        images.forEach { image ->
+        images.forEachIndexed { index, image ->
             Box(
                 modifier = Modifier
                     .size(60.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MiuixTheme.colorScheme.surfaceContainer),
+                    .background(MiuixTheme.colorScheme.surfaceContainer)
+                    .clickable { onPreviewImage(index) },
             ) {
                 rememberDataUrlBitmap(image.dataUrl)?.let { bitmap ->
                     Image(

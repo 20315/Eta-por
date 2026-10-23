@@ -39,6 +39,7 @@ import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.layout.DialogDefaults
 import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -120,7 +121,19 @@ internal fun ConversationMoveCategorySheet(
                             onClick = { onPick(null); onDismiss() },
                         )
                     }
-                    items(ordered, key = { it.id }) { category ->
+                    if (filtered.isEmpty() && query.isNotBlank()) {
+                        item(key = "empty") {
+                            Text(
+                                text = stringResource(R.string.conversation_move_category_empty),
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                    items(filtered, key = { it.id }) { category ->
                         CategoryPickRow(
                             label = category.name,
                             barColor = categoryBarColor(ordered.indexOf(category)),
@@ -145,16 +158,7 @@ internal fun ConversationMoveCategorySheet(
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                TextButton(
-                    text = stringResource(R.string.action_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 20.dp),
-                )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp).navigationBarsPadding())
             }
         }
     }
@@ -238,29 +242,28 @@ private fun CreateCategoryRow(
         }
     } else {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            InputField(
-                query = newName,
-                onQueryChange = onNameChange,
-                onSearch = {},
-                expanded = false,
-                onExpandedChange = {},
+            TextField(
+                value = newName,
+                onValueChange = onNameChange,
                 label = stringResource(R.string.conversation_move_category_name),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 TextButton(
                     text = stringResource(R.string.action_cancel),
                     onClick = onCancel,
                     minWidth = 0.dp,
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 TextButton(
                     text = stringResource(R.string.action_confirm),
                     onClick = onConfirm,
                     minWidth = 0.dp,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

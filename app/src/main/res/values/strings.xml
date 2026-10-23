@@ -1985,4 +1985,5 @@
     <string name="conversation_move_category_search">搜索分类</string>
     <string name="conversation_move_category_create">新建分类并移入</string>
     <string name="conversation_move_category_name">分类名称</string>
+    <string name="conversation_move_category_empty">没有匹配的分类</string>
 </resources>
