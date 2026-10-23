@@ -54,6 +54,7 @@ internal fun AgentHomeScreen(
             onModelSelected = { onAction(AgentHomeAction.ModelSelected(it)) },
             onSubmit = { text -> onAction(AgentHomeAction.SubmitMessage(text)) },
             onInterruptAndSubmit = { text -> onAction(AgentHomeAction.InterruptAndSubmitMessage(text)) },
+            onQueueMessage = { text -> onAction(AgentHomeAction.QueueMessage(text)) },
             queuedMessages = state.queuedMessages,
             onSteerQueuedMessage = { id -> onAction(AgentHomeAction.SteerQueuedMessage(id)) },
             onRecallQueuedMessage = { id, draft -> onAction(AgentHomeAction.RecallQueuedMessage(id, draft)) },

@@ -10,6 +10,7 @@ sealed interface AgentHomeAction {
     data class ModelSelected(val modelId: String) : AgentHomeAction
     data class SubmitMessage(val text: String) : AgentHomeAction
     data class InterruptAndSubmitMessage(val text: String) : AgentHomeAction
+    data class QueueMessage(val text: String) : AgentHomeAction
     data class SteerQueuedMessage(val id: String) : AgentHomeAction
     data class RecallQueuedMessage(val id: String, val currentDraftText: String) : AgentHomeAction
     data class RemoveQueuedMessage(val id: String) : AgentHomeAction

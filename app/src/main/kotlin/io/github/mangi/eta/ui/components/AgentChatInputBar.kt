@@ -152,6 +152,7 @@ internal fun AgentChatInputBar(
     onModelSelected: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onInterruptAndSubmit: (String) -> Unit = onSubmit,
+    onQueueMessage: (String) -> Unit = {},
     onSteerQueuedMessage: (String) -> Unit = {},
     onRecallQueuedMessage: (String, String) -> Unit = { _, _ -> },
     onRemoveQueuedMessage: (String) -> Unit = {},
@@ -300,6 +301,18 @@ internal fun AgentChatInputBar(
             .fillMaxWidth(),
     ) {
         if (recognitionEnabled) SpeechInputFeedback(dictation)
+        AnimatedVisibility(
+            visible = queuedMessages.isNotEmpty(),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkVertically(tween(150)),
+        ) {
+            EtaQueuedMessageStrip(
+                items = queuedMessages,
+                onSendNow = onSteerQueuedMessage,
+                onRemove = onRemoveQueuedMessage,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
         AnimatedVisibility(
             visible = pendingFileReferences.isNotEmpty(),
             enter = fadeIn(tween(160)),
@@ -663,18 +676,29 @@ internal fun AgentChatInputBar(
                                     tint = MiuixTheme.colorScheme.error,
                                 )
                             }
-                            IconButton(
-                                onClick = {
-                                    if (canSend) {
-                                        dictation.cancel()
-                                        val submittedText = textFieldState.text.toString()
-                                        textFieldState.clearText()
-                                        onSubmit(submittedText)
-                                    }
-                                },
-                                enabled = canSend,
-                                minWidth = ChatInputActionSize,
-                                minHeight = ChatInputActionSize,
+                            Box(
+                                modifier = Modifier
+                                    .size(ChatInputActionSize)
+                                    .combinedClickable(
+                                        enabled = canSend,
+                                        onClick = {
+                                            if (canSend) {
+                                                dictation.cancel()
+                                                val submittedText = textFieldState.text.toString()
+                                                textFieldState.clearText()
+                                                onSubmit(submittedText)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (canSend) {
+                                                dictation.cancel()
+                                                val submittedText = textFieldState.text.toString()
+                                                textFieldState.clearText()
+                                                onQueueMessage(submittedText)
+                                            }
+                                        },
+                                    ),
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Box(
                                     modifier = Modifier

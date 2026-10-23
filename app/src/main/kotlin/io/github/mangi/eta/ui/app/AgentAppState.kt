@@ -1337,6 +1337,11 @@ internal class AgentAppState(
         submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = true)
     }
 
+    /** 长按发送：只排队等待，不打断当前运行。 */
+    fun queueCurrentMessage(submittedText: String? = null) {
+        submitOrQueueCurrentMessage(submittedText = submittedText, immediateInterrupt = false, queueOnly = true)
+    }
+
     /** 队列里点「立即插话」：置队首并打断当前运行，收尾后自动发出。 */
     fun steerQueuedMessage(id: String) {
         val (nextState, promoted) = AgentMessageQueueReducer.promoteToInterrupt(homeState, id)
@@ -1373,6 +1378,7 @@ internal class AgentAppState(
     private fun submitOrQueueCurrentMessage(
         submittedText: String?,
         immediateInterrupt: Boolean,
+        queueOnly: Boolean = false,
     ) {
         if (homeState.isCompacting) return
         if (io.github.mangi.eta.agent.model.AgentContextPolicy.isLocked(homeState.history)) {
@@ -1444,7 +1450,20 @@ internal class AgentAppState(
         }
 
         if (homeState.isStreaming) {
-            if (immediateInterrupt) {
+            if (queueOnly) {
+                // 长按发送：只入队，等当前运行自然收尾后发出。
+                val queued = QueuedMessageUi(
+                    id = "queue-${UUID.randomUUID()}",
+                    content = prompt,
+                    pendingImages = pendingImages,
+                    pendingFileReferences = pendingFileReferences,
+                    immediateInterrupt = false,
+                )
+                updateCurrentConversation(
+                    state = AgentMessageQueueReducer.enqueue(homeState, queued),
+                    updateTimestamp = false,
+                )
+            } else if (immediateInterrupt) {
                 // 显式插话：入队置首并打断当前运行，收尾后自动发出。
                 val queued = QueuedMessageUi(
                     id = "queue-${UUID.randomUUID()}",

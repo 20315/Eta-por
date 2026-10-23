@@ -164,6 +164,7 @@ internal fun AgentChatBody(
     onModelSelected: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onInterruptAndSubmit: (String) -> Unit = onSubmit,
+    onQueueMessage: (String) -> Unit = {},
     onSteerQueuedMessage: (String) -> Unit = {},
     onRecallQueuedMessage: (String, String) -> Unit = { _, _ -> },
     onRemoveQueuedMessage: (String) -> Unit = {},
@@ -318,6 +319,7 @@ internal fun AgentChatBody(
                 keepBottomAnchored = true
                 onSubmit(text)
             },
+            onQueueMessage = onQueueMessage,
             onInterruptAndSubmit = { text ->
                 sentFromKeyboard = true
                 keepBottomAnchored = true
@@ -399,6 +401,7 @@ private fun AgentChatScaffold(
     onBottomAnchorChanged: (Boolean) -> Unit,
     onSubmit: (String) -> Unit,
     onInterruptAndSubmit: (String) -> Unit,
+    onQueueMessage: (String) -> Unit,
     onSteerQueuedMessage: (String) -> Unit,
     onRecallQueuedMessage: (String, String) -> Unit,
     onRemoveQueuedMessage: (String) -> Unit,
@@ -481,6 +484,7 @@ private fun AgentChatScaffold(
                 messageEdit = messageEdit,
                 onSubmit = onSubmit,
                 onInterruptAndSubmit = onInterruptAndSubmit,
+            onQueueMessage = onQueueMessage,
                 onSteerQueuedMessage = onSteerQueuedMessage,
                 onRecallQueuedMessage = onRecallQueuedMessage,
                 onRemoveQueuedMessage = onRemoveQueuedMessage,
@@ -1119,6 +1123,7 @@ private fun AgentChatBottomBar(
     messageEdit: MessageEditUiState?,
     onSubmit: (String) -> Unit,
     onInterruptAndSubmit: (String) -> Unit,
+    onQueueMessage: (String) -> Unit,
     onSteerQueuedMessage: (String) -> Unit,
     onRecallQueuedMessage: (String, String) -> Unit,
     onRemoveQueuedMessage: (String) -> Unit,
@@ -1244,6 +1249,7 @@ private fun AgentChatBottomBar(
                 preserveFollowingMessages = messageEdit?.preserveFollowingMessages == true,
                 onSubmit = onSubmit,
                 onInterruptAndSubmit = onInterruptAndSubmit,
+            onQueueMessage = onQueueMessage,
                 onSteerQueuedMessage = onSteerQueuedMessage,
                 onRecallQueuedMessage = onRecallQueuedMessage,
                 onRemoveQueuedMessage = onRemoveQueuedMessage,
