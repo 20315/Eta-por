@@ -71,6 +71,7 @@ internal fun ConversationMoveCategorySheet(
         insideMargin = DpSize(0.dp, 0.dp),
     ) {
         if (conversationTitle != null) {
+            val shownTitle = conversationTitle.ifBlank { stringResource(R.string.conversation_unnamed) }
             var query by remember { mutableStateOf("") }
             var creating by remember { mutableStateOf(false) }
             var newName by remember { mutableStateOf("") }
@@ -81,7 +82,7 @@ internal fun ConversationMoveCategorySheet(
             }
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = conversationTitle,
+                    text = shownTitle,
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     maxLines = 1,

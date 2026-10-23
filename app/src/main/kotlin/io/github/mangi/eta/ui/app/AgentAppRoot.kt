@@ -1050,26 +1050,26 @@ fun AgentAppRoot(
         }
     }
 
-    categoryMoveTarget?.let { conversation ->
-        io.github.mangi.eta.ui.components.ConversationMoveCategorySheet(
-            conversationTitle = conversation.title.ifBlank {
-                stringResource(io.github.mangi.eta.R.string.conversation_unnamed)
-            },
-            categories = agentState.conversationCategories,
-            currentCategoryId = agentState.conversationCategoryOf(conversation.id),
-            onPick = { categoryId ->
-                agentState.setConversationCategory(conversation.id, categoryId)
-                categoryMoveTarget = null
-            },
-            onCreateAndPick = { name ->
+    // 底部弹层必须始终在 composition 里（由 show 控制显隐），条件式调用会挂不上窗口导致点了没反应。
+    io.github.mangi.eta.ui.components.ConversationMoveCategorySheet(
+        conversationTitle = categoryMoveTarget?.title,
+        categories = agentState.conversationCategories,
+        currentCategoryId = categoryMoveTarget?.let { agentState.conversationCategoryOf(it.id) },
+        onPick = { categoryId ->
+            categoryMoveTarget?.let { target -> agentState.setConversationCategory(target.id, categoryId) }
+            categoryMoveTarget = null
+        },
+        onCreateAndPick = { name ->
+            val target = categoryMoveTarget
+            categoryMoveTarget = null
+            target?.let { conversation ->
                 agentState.createConversationCategory(name)?.let { newId ->
                     agentState.setConversationCategory(conversation.id, newId)
                 }
-                categoryMoveTarget = null
-            },
-            onDismiss = { categoryMoveTarget = null },
-        )
-    }
+            }
+        },
+        onDismiss = { categoryMoveTarget = null },
+    )
 
     conversationRenameTarget?.let { conversation ->
         var renameInput by remember(conversation.id) { mutableStateOf(conversation.title) }
