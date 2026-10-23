@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -67,10 +67,20 @@ internal fun EtaQueuedMessageStrip(
                     color = MiuixTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .clickable { onSendNow(item.id) },
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                IconButton(
+                    onClick = { onSendNow(item.id) },
+                    minWidth = 32.dp,
+                    minHeight = 32.dp,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Bolt,
+                        contentDescription = stringResource(R.string.chat_queue_steer_now),
+                        modifier = Modifier.padding(2.dp),
+                        tint = MiuixTheme.colorScheme.primary,
+                    )
+                }
                 IconButton(
                     onClick = { onRemove(item.id) },
                     minWidth = 32.dp,
