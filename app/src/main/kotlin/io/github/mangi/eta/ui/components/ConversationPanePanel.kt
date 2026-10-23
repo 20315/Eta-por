@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
@@ -197,7 +199,8 @@ internal fun ConversationPanePanel(
             .minByOrNull { entry -> kotlin.math.abs(entry.value.center.y - y) }
             ?.key
     fun updateHover(y: Float) {
-        hoverCategoryKey = hitCategory(y)
+        val key = hitCategory(y)
+        if (key != hoverCategoryKey) hoverCategoryKey = key
     }
     fun dropAt(y: Float) {
         hoverCategoryKey = null
@@ -703,7 +706,7 @@ private fun ConversationTextRow(
     var lastDropY by remember { mutableFloatStateOf(0f) }
     var dragLift by remember { mutableFloatStateOf(0f) }
     var dragDistance by remember { mutableFloatStateOf(0f) }
-    val longPressMenuThresholdPx = with(LocalDensity.current) { 6.dp.toPx() }
+    val rowScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
 
     Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragLift != 0f) 2f else 0f)) {
@@ -728,45 +731,14 @@ private fun ConversationTextRow(
                     shadowElevation = if (lift) 8f else 0f
                 }
                 .onGloballyPositioned { coords -> rowTop = coords.boundsInRoot().top }
-                .zIndex(if (dragLift != 0f) 2f else 0f)
-                .pointerInput(conversation.id, rowTop) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        // 长按成立后才进入拖拽；按住不动松手＝呼出操作菜单。
-                        val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
-                        onDragStart()
-                        var moved = false
-                        var travelled = 0f
-                        onDragAt(rowTop + longPress.position.y)
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) {
-                                change.consume()
-                                break
-                            }
-                            val delta = change.positionChange()
-                            if (delta != androidx.compose.ui.geometry.Offset.Zero) {
-                                travelled += kotlin.math.abs(delta.x) + kotlin.math.abs(delta.y)
-                                if (travelled > longPressMenuThresholdPx) moved = true
-                                if (moved) {
-                                    dragLift += delta.y
-                                    lastDropY = rowTop + change.position.y
-                                    onDragAt(lastDropY)
-                                }
-                                change.consume()
-                            }
-                        }
-                        dragLift = 0f
-                        if (moved) {
-                            onDropAt(lastDropY)
-                        } else {
-                            onDragCancel()
-                            showActionMenu = true
-                        }
-                    }
-                }
-                .clickable(onClick = onClick)
+                // 长按到系统时限即弹菜单（不需要松手）；拖拽入口先撤掉，避免列表卡死。
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showActionMenu = true
+                    },
+                )
                 .padding(
                     horizontal = ConversationPanelMetrics.RowHorizontalPadding,
                     vertical = ConversationPanelMetrics.RowVerticalPadding,
