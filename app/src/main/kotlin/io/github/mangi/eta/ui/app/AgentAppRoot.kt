@@ -1068,6 +1068,8 @@ fun AgentAppRoot(
                 java.io.File(io.github.mangi.eta.agent.terminal.TerminalRuntime.ROOT_WORKSPACE_PATH, path)
                     .absolutePath
             },
+            // 工作区浏览器本身是 sheet，这里用 Dialog 卡片；会话里的卡片保持原来的底部弹层。
+            useBottomSheet = false,
         )
     }
 

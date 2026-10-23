@@ -31,6 +31,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -179,31 +180,31 @@ internal fun MarkdownFileDialog(
     onDismiss: () -> Unit,
     readDisk: (suspend (String) -> String?)? = null,
     editRealPath: (() -> String?)? = null,
+    /** true = 底部弹层（会话里用，带回弹与跟手）；false = 自绘 Dialog 卡片（工作区用，sheet 内也能显示）。 */
+    useBottomSheet: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // 底部弹层（与「会话导航」同一套）：先置 false，再拉起来播放入场动画。
     var visible by remember(path) { mutableStateOf(false) }
     var text by remember(path) { mutableStateOf(original) }
     var menuOpen by remember(path) { mutableStateOf(false) }
-    // 送去 MT 编辑时置位，回到 Eta 的前台时重读一次磁盘，省得手动关开卡片。
     var refreshOnResume by remember(path) { mutableStateOf(false) }
     var reloadTick by remember(path) { mutableStateOf(0) }
-    // 勾选过就置 dirty：勾选即保存，写失败时留到关闭再补一次。
     var dirty by remember(path) { mutableStateOf(false) }
     val name = path.substringAfterLast('/').ifBlank { path }
 
-    fun requestClose() {
+    /** [animated] = false 表示界面已经滑出屏幕，不必再播退场动画（拖动关闭走这条）。 */
+    fun requestClose(animated: Boolean = true) {
         if (!visible) return
         scope.launch {
-            // 关窗前把没落盘的勾选改动再试一次（写失败时 dirty 仍为 true）。
             if (dirty) {
                 val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, text) }
                 if (error == null) dirty = false
             }
-            // 交给弹层播退场动画，动画走完再让宿主移除，避免生硬消失。
-            visible = false
-            delay(280)
+            if (animated) {
+                visible = false
+                delay(280)
+            }
             onDismiss()
         }
     }
@@ -213,9 +214,7 @@ internal fun MarkdownFileDialog(
     ) { uri: Uri? ->
         if (uri != null) {
             val ok = runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(text.toByteArray())
-                }
+                context.contentResolver.openOutputStream(uri)?.use { out -> out.write(text.toByteArray()) }
                 true
             }.getOrDefault(false)
             Toast.makeText(context, if (ok) "已保存到设备" else "保存失败", Toast.LENGTH_SHORT).show()
@@ -224,8 +223,6 @@ internal fun MarkdownFileDialog(
 
     LaunchedEffect(path, reloadTick) {
         visible = true
-        // 消息里的块只是初始快照；磁盘有文件时以文件为准，避免「存过了但还显示旧内容」。
-        // 调用方给了 readDisk（如工作区浏览器需要 root 读取）就优先用它，否则直读文件。
         val disk = withContext(Dispatchers.IO) {
             if (readDisk != null) readDisk(path) else runCatching { File(path).readText() }.getOrNull()
         }
@@ -235,7 +232,6 @@ internal fun MarkdownFileDialog(
         }
     }
 
-    // 从 MT 管理器返回时重读：Activity 重新回到前台就刷一次（只在送去编辑之后生效）。
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -248,170 +244,105 @@ internal fun MarkdownFileDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Dialog 打底（窗口级，工作区 sheet 内嵌也能显示），里面自绘底部卡片：
-    // 拖拽跟手、松手回弹或关闭，进出场都有动画；不再用会挂不上窗口的 OverlayBottomSheet。
     val density = androidx.compose.ui.platform.LocalDensity.current
     val windowHeight = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height
     val cardHeight = (windowHeight * 0.88f).toInt()
 
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = { requestClose() },
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-        ),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val cardHeightPx = with(density) { cardHeight.toFloat() }
-            // 0 = 完全展开，1 = 完全收起（在屏幕下方）
-            val progress = remember { Animatable(1f) }
-            LaunchedEffect(visible) {
-                if (visible) progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
-                else progress.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
-            }
-            // 透明遮罩：只负责「点空白关闭」，不压暗（菜单本身也不需要灰底）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(interactionSource = null, indication = null) { requestClose() },
-            )
-            var dragOffset by remember { mutableFloatStateOf(0f) }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(with(density) { cardHeightPx.toDp() })
-                    .offset { IntOffset(0, (progress.value * cardHeightPx + dragOffset).roundToInt()) }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { _, dragAmount ->
-                                if (dragAmount > 0 || dragOffset > 0) dragOffset += dragAmount
-                            },
-                            onDragEnd = {
-                                // 拖过 1/6 高度就关，否则回弹
-                                if (dragOffset > cardHeightPx / 6f) {
-                                    dragOffset = 0f
-                                    requestClose()
-                                } else {
-                                    dragOffset = 0f
-                                }
-                            },
-                            onDragCancel = { dragOffset = 0f },
-                        )
-                    }
-                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                    .background(MiuixTheme.colorScheme.surface)
-                    .navigationBarsPadding(),
-            ) {
-                // 顶部拖拽提示条
-                Box(
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .align(Alignment.CenterHorizontally)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.4f)),
+    // 内容只写一份，两种外壳共用。
+    val body: @Composable ColumnScope.() -> Unit = {
+        // 标题行：文件名 +（与文件名不同时）路径，右侧编辑与更多
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 8.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            // 标题行：文件名 +（与文件名不同时）路径，右侧是编辑与更多
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 8.dp, top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = name,
-                            style = MiuixTheme.textStyles.body2,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (path.isNotBlank() && path != name) {
-                            Text(
-                                text = path,
-                                style = MiuixTheme.textStyles.footnote2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = {
-                            // 「笔」把原文件交给 MT 管理器，回来时自动刷新预览。
-                            val target = editRealPath?.invoke() ?: path
-                            if (openInMtEditor(context, target)) {
-                                refreshOnResume = true
-                            } else {
-                                Toast.makeText(context, "没有找到可用的编辑器", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        minWidth = 36.dp,
-                        minHeight = 36.dp,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Edit,
-                            contentDescription = "用 MT 管理器编辑",
-                            modifier = Modifier.size(18.dp),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                    IconButton(
-                        onClick = { menuOpen = true },
-                        minWidth = 36.dp,
-                        minHeight = 36.dp,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    StaticMarkdown(
-                        content = text,
-                        tone = MarkdownTone.Answer,
-                        codeWrap = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        onTaskToggle = { offset ->
-                            val next = toggleTaskAt(text, offset)
-                            if (next != text) {
-                                text = next
-                                dirty = true
-                                // 勾选即保存：写盘成功才清 dirty，失败提示原因，关闭时再兜底重试。
-                                scope.launch {
-                                    val error = withContext(Dispatchers.IO) {
-                                        writeMarkdownFile(context, path, next)
-                                    }
-                                    if (error == null) {
-                                        dirty = false
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            "自动保存失败：$error",
-                                            Toast.LENGTH_LONG,
-                                        ).show()
-                                    }
-                                }
-                            }
-                        },
+                if (path.isNotBlank() && path != name) {
+                    Text(
+                        text = path,
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            if (menuOpen) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize(),
-                ) {
+            IconButton(
+                onClick = {
+                    val target = editRealPath?.invoke() ?: path
+                    if (openInMtEditor(context, target)) {
+                        refreshOnResume = true
+                    } else {
+                        Toast.makeText(context, "没有找到可用的编辑器", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                minWidth = 36.dp,
+                minHeight = 36.dp,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "用 MT 管理器编辑",
+                    modifier = Modifier.size(18.dp),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            IconButton(
+                onClick = { menuOpen = true },
+                minWidth = 36.dp,
+                minHeight = 36.dp,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            StaticMarkdown(
+                content = text,
+                tone = MarkdownTone.Answer,
+                codeWrap = true,
+                modifier = Modifier.fillMaxWidth(),
+                onTaskToggle = { offset ->
+                    val next = toggleTaskAt(text, offset)
+                    if (next != text) {
+                        text = next
+                        dirty = true
+                        scope.launch {
+                            val error = withContext(Dispatchers.IO) { writeMarkdownFile(context, path, next) }
+                            if (error == null) {
+                                dirty = false
+                            } else {
+                                Toast.makeText(context, "自动保存失败：$error", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        // 更多菜单：淡入淡出，收起时不闪
+        AnimatedVisibility(
+            visible = menuOpen,
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(100)),
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -420,9 +351,9 @@ internal fun MarkdownFileDialog(
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 8.dp, end = 12.dp)
+                        .padding(top = 44.dp, end = 12.dp)
                         .widthIn(min = 196.dp)
-                        .squircleSurface(color = MiuixTheme.colorScheme.surface, cornerRadius = 16.dp)
+                        .squircleSurface(color = MiuixTheme.colorScheme.surfaceContainerHigh, cornerRadius = 16.dp)
                         .padding(vertical = 6.dp),
                 ) {
                     MenuRow(Icons.Rounded.Download, "保存到设备") {
@@ -460,6 +391,91 @@ internal fun MarkdownFileDialog(
             }
         }
     }
+
+    if (useBottomSheet) {
+        val sheetHeight = (with(density) { windowHeight.toDp() } * 0.88f).coerceAtLeast(320.dp)
+        // 会话里用原来的底部弹层：自带跟手、回弹与返回同步退场。
+        OverlayBottomSheet(
+            show = visible,
+            title = name,
+            onDismissRequest = { requestClose() },
+            insideMargin = DpSize(0.dp, 0.dp),
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().height(sheetHeight)) {
+                Column(modifier = Modifier.fillMaxSize().navigationBarsPadding(), content = body)
+            }
+        }
+    } else {
+        // 工作区：sheet 里再套 OverlayBottomSheet 挂不上窗口，改自绘 Dialog 卡片。
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { requestClose() },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val cardHeightPx = with(density) { cardHeight.toFloat() }
+                val dismissThreshold = cardHeightPx * 0.22f
+                val progress = remember { Animatable(1f) }
+                val dragOffset = remember { Animatable(0f) }
+                val dragScope = rememberCoroutineScope()
+                LaunchedEffect(visible) {
+                    if (visible) progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
+                    else progress.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(interactionSource = null, indication = null) { requestClose() },
+                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(with(density) { cardHeightPx.toDp() })
+                        .offset { IntOffset(0, (progress.value * cardHeightPx + dragOffset.value).roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    // 只允许往下拖；往上不超过 0
+                                    val next = (dragOffset.value + dragAmount).coerceAtLeast(0f)
+                                    dragScope.launch { dragOffset.snapTo(next) }
+                                },
+                                onDragEnd = {
+                                    if (dragOffset.value > dismissThreshold) {
+                                        // 顺着松手位置继续滑出，滑完直接收尾，不再重播退场动画
+                                        dragScope.launch {
+                                            dragOffset.animateTo(cardHeightPx, tween(180, easing = FastOutLinearInEasing))
+                                            requestClose(animated = false)
+                                        }
+                                    } else {
+                                        dragScope.launch {
+                                            dragOffset.animateTo(0f, spring(dampingRatio = 0.85f, stiffness = 380f))
+                                        }
+                                    }
+                                },
+                                onDragCancel = {
+                                    dragScope.launch { dragOffset.animateTo(0f, tween(150)) }
+                                },
+                            )
+                        }
+                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                        .background(MiuixTheme.colorScheme.surface)
+                        .navigationBarsPadding(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 36.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                    )
+                    body()
+                }
+            }
+        }
     }
 }
 
