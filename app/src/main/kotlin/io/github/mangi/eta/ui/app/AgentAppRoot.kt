@@ -261,6 +261,9 @@ fun AgentAppRoot(
     }
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var categoryMoveTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
+    // 工作区里点的 Markdown：路径 to 内容。宿主放在页面层，避免在工作区 sheet 里再套一层弹层。
+    var workspaceMarkdown by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val workspaceStore = remember { io.github.mangi.eta.ui.app.WorkspaceFileStore(context) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationBatchDeleteTarget by remember { mutableStateOf<List<ConversationSummaryUi>?>(null) }
     var conversationExportTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
@@ -417,6 +420,7 @@ fun AgentAppRoot(
                     visible = true,
                     topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 56.dp,
                     onDismiss = { workspaceSheetOpen = false },
+                    onOpenMarkdown = { path, text -> workspaceMarkdown = path to text },
                 )
             },
             conversationTrimmed = agentState.historyTrimNotice,
@@ -1051,6 +1055,20 @@ fun AgentAppRoot(
                 text = "知道了", onClick = characterStore::dismissNotice, modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+
+    // 工作区 Markdown 预览：在页面层弹出，OverlayBottomSheet 才能自带跟手与返回同步退场。
+    workspaceMarkdown?.let { (path, original) ->
+        io.github.mangi.eta.ui.markdown.MarkdownFileDialog(
+            path = path,
+            original = original,
+            onDismiss = { workspaceMarkdown = null },
+            readDisk = { relative -> io.github.mangi.eta.ui.app.readWorkspaceText(workspaceStore, relative) },
+            editRealPath = {
+                java.io.File(io.github.mangi.eta.agent.terminal.TerminalRuntime.ROOT_WORKSPACE_PATH, path)
+                    .absolutePath
+            },
+        )
     }
 
     // 底部弹层必须始终在 composition 里（由 show 控制显隐），条件式调用会挂不上窗口导致点了没反应。

@@ -154,3 +154,13 @@ private fun workspaceBackend(root: File): FileToolBackend {
         runOneShotShell(supervisor, "root", command, timeoutSeconds = 20, stdin = input, maxOutputBytes = limit)
     }
 }
+
+/** 预览用读取：失败返回 null（不抛给 UI）。 */
+internal suspend fun readWorkspaceText(store: WorkspaceFileStore, relativePath: String): String? =
+    try {
+        store.readText(relativePath)
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }

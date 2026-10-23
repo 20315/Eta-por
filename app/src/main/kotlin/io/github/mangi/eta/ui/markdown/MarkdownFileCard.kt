@@ -248,52 +248,24 @@ internal fun MarkdownFileDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Dialog 打底（任意层级都能显示），里面自己画一张底部卡片：
-    // 遮罩淡入 + 卡片从底部滑入、退场反向播放，观感与会话里的底部弹层一致。
-    androidx.compose.ui.window.Dialog(
+    // 回到原来的底部弹层：自带跟手下拉、系统返回同步退场动画，并顶到顶栏下方。
+    // 注意：它不能在别的 sheet 里嵌套使用，因此宿主调用方已提升到页面层级。
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val windowHeight = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height
+    val sheetHeight = (with(density) { windowHeight.toDp() } - 56.dp).coerceAtLeast(320.dp)
+
+    OverlayBottomSheet(
+        show = visible,
+        title = name,
         onDismissRequest = { requestClose() },
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-        ),
+        insideMargin = DpSize(0.dp, 0.dp),
     ) {
-        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val cardHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { (maxHeight * 0.9f).toPx() }
-            // 0 = 完全展开，1 = 完全收起（在屏幕下方）
-            val progress = remember { Animatable(1f) }
-            LaunchedEffect(visible) {
-                if (visible) {
-                    progress.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
-                } else {
-                    progress.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
-                }
-            }
-            // 遮罩：随手势进度淡入淡出，点击关闭
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f * (1f - progress.value)))
-                    .clickable(interactionSource = null, indication = null) { requestClose() },
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(maxHeight * 0.9f)
-                    .offset { IntOffset(0, (progress.value * cardHeightPx).roundToInt()) }
-                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                    .background(MiuixTheme.colorScheme.surface)
-                    .navigationBarsPadding(),
-            ) {
-                // 顶部拖拽提示条
-                Box(
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .align(Alignment.CenterHorizontally)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.4f)),
-                )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(sheetHeight),
+        ) {
+            Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
             // 标题行：文件名 +（与文件名不同时）路径，右侧是编辑与更多
             Row(
                 modifier = Modifier
@@ -441,8 +413,8 @@ internal fun MarkdownFileDialog(
                     }
                 }
             }
-            }
         }
+    }
     }
 }
 

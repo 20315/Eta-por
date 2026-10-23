@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowRightAlt
+import androidx.compose.material.icons.rounded.WrapText
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
@@ -300,6 +302,8 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
             .fillMaxWidth()
             .squircleSurface(color = style.codeBackground, cornerRadius = 12.dp),
     ) {
+        // 折行开关：默认沿用调用方设置（预览页折行、聊天不折行），可逐块切换。
+        var wrap by remember(block.text.text) { mutableStateOf(scope.codeWrap) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -314,16 +318,30 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(
+                onClick = { wrap = !wrap },
+                minWidth = 30.dp,
+                minHeight = 30.dp,
+            ) {
+                Icon(
+                    imageVector = if (wrap) Icons.Rounded.WrapText else Icons.AutoMirrored.Rounded.ArrowRightAlt,
+                    contentDescription = stringResource(
+                        if (wrap) R.string.markdown_code_nowrap else R.string.markdown_code_wrap,
+                    ),
+                    modifier = Modifier.size(16.dp),
+                    tint = if (wrap) MiuixTheme.colorScheme.primary else style.secondaryColor,
+                )
+            }
             CopyButton(text = block.text.text, tint = style.secondaryColor)
         }
-        // 预览页按宽度折行铺满（自适应）；聊天里保持不折行 + 横向滚动，保留缩进对齐。
+        // 默认不折行 + 横向滚动（保留缩进对齐）；开关打开后按容器宽度折行铺满。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (scope.codeWrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))
+                .then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState()))
                 .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
         ) {
-            MarkdownText(block, style.code, scope, softWrap = scope.codeWrap)
+            MarkdownText(block, style.code, scope, softWrap = wrap)
         }
     }
 }
