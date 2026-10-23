@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -83,39 +85,55 @@ internal fun ProvideEtaTextToolbar(content: @Composable () -> Unit) {
 
 @Composable
 private fun EtaTextSelectionMenuPopup(menu: EtaTextSelectionMenu, onDismiss: () -> Unit) {
+    // 用 Dialog（独立窗口）承载菜单：Popup 依附宿主 view tree，在 Dialog 内长按会触发
+    // "layouts are not part of the same hierarchy" 的跨窗口崩溃。
     val density = LocalDensity.current
-    val menuHeight = 44.dp
-    val offsetX = with(density) { menu.anchor.left.toInt() }
-    val offsetY = with(density) { menu.anchor.top.toInt() } - with(density) { menuHeight.roundToPx() }
-    Popup(
-        offset = IntOffset(offsetX.coerceAtLeast(0), offsetY.coerceAtLeast(0)),
+    val menuHeightPx = with(density) { 44.dp.toPx() }
+    val offsetX = with(density) { menu.anchor.left.toInt() }.coerceAtLeast(0)
+    val offsetY = (with(density) { menu.anchor.top.toInt() } - menuHeightPx.toInt()).coerceAtLeast(0)
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
-        Row(
-            modifier = Modifier
-                .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier.fillMaxSize(),
         ) {
-            menu.onCut?.let { action ->
-                SelectionMenuItem(stringResource(R.string.text_action_cut)) {
-                    action(); onDismiss()
+            // 透明点击层：点外面收起菜单
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(interactionSource = null, indication = null) { onDismiss() },
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset { androidx.compose.ui.unit.IntOffset(offsetX, offsetY) }
+                    .background(MiuixTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                menu.onCut?.let { action ->
+                    SelectionMenuItem(stringResource(R.string.text_action_cut)) {
+                        action(); onDismiss()
+                    }
                 }
-            }
-            menu.onCopy?.let { action ->
-                SelectionMenuItem(stringResource(R.string.ui_copy_4edd1d)) {
-                    action(); onDismiss()
+                menu.onCopy?.let { action ->
+                    SelectionMenuItem(stringResource(R.string.ui_copy_4edd1d)) {
+                        action(); onDismiss()
+                    }
                 }
-            }
-            menu.onPaste?.let { action ->
-                SelectionMenuItem(stringResource(R.string.terminal_key_paste)) {
-                    action(); onDismiss()
+                menu.onPaste?.let { action ->
+                    SelectionMenuItem(stringResource(R.string.terminal_key_paste)) {
+                        action(); onDismiss()
+                    }
                 }
-            }
-            menu.onSelectAll?.let { action ->
-                SelectionMenuItem(stringResource(R.string.page_select_all_3e44b2)) {
-                    action(); onDismiss()
+                menu.onSelectAll?.let { action ->
+                    SelectionMenuItem(stringResource(R.string.page_select_all_3e44b2)) {
+                        action(); onDismiss()
+                    }
                 }
             }
         }
