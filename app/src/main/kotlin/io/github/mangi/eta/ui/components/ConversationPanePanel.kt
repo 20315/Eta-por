@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.MoreHoriz
@@ -736,15 +737,16 @@ private fun ConversationSectionHeader(
                 modifier = Modifier.padding(start = 6.dp),
             )
         }
-        if (isCategorySection) {
+        if (isCategorySection && collapsed) {
             IconButton(
                 onClick = { onNewConversationInCategory(categoryId) },
                 modifier = Modifier.size(32.dp),
             ) {
                 Icon(
-                    Icons.Rounded.Add,
+                    Icons.Rounded.AddComment,
                     contentDescription = stringResource(R.string.action_new_conversation),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(19.dp),
+                    tint = MiuixTheme.colorScheme.primary,
                 )
             }
         }

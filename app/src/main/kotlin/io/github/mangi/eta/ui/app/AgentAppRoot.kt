@@ -1051,35 +1051,24 @@ fun AgentAppRoot(
     }
 
     categoryMoveTarget?.let { conversation ->
-        WindowDialog(
-            show = true,
-            cornerRadius = DialogDefaults.CornerRadius,
-            title = stringResource(R.string.conversation_category_move),
-            onDismissRequest = { categoryMoveTarget = null },
-        ) {
-            Column {
-                agentState.conversationCategories
-                    .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
-                    .forEach { category ->
-                        top.yukonga.miuix.kmp.basic.TextButton(
-                            text = category.name,
-                            onClick = {
-                                agentState.setConversationCategory(conversation.id, category.id)
-                                categoryMoveTarget = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                top.yukonga.miuix.kmp.basic.TextButton(
-                    text = stringResource(R.string.conversation_category_uncategorized),
-                    onClick = {
-                        agentState.setConversationCategory(conversation.id, null)
-                        categoryMoveTarget = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
+        io.github.mangi.eta.ui.components.ConversationMoveCategorySheet(
+            conversationTitle = conversation.title.ifBlank {
+                stringResource(io.github.mangi.eta.R.string.conversation_unnamed)
+            },
+            categories = agentState.conversationCategories,
+            currentCategoryId = agentState.conversationCategoryOf(conversation.id),
+            onPick = { categoryId ->
+                agentState.setConversationCategory(conversation.id, categoryId)
+                categoryMoveTarget = null
+            },
+            onCreateAndPick = { name ->
+                agentState.createConversationCategory(name)?.let { newId ->
+                    agentState.setConversationCategory(conversation.id, newId)
+                }
+                categoryMoveTarget = null
+            },
+            onDismiss = { categoryMoveTarget = null },
+        )
     }
 
     conversationRenameTarget?.let { conversation ->

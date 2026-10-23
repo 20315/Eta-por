@@ -1257,6 +1257,8 @@ internal class AgentAppState(
         }
     }
 
+    fun conversationCategoryOf(conversationId: String): String? = conversationCategoryIds[conversationId]
+
     /** 会话归属分类；categoryId 为 null 表示移回未分类。 */
     fun setConversationCategory(conversationId: String, categoryId: String?) {
         val normalized = categoryId?.takeIf { candidate -> conversationCategories.any { it.id == candidate } }

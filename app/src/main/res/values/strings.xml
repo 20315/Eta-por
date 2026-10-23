@@ -1982,4 +1982,7 @@
     <string name="chat_queue_remove">移除排队消息</string>
     <string name="chat_queue_images_only">[%1$d 张图片]</string>
     <string name="chat_queue_files_only">[%1$d 个文件]</string>
+    <string name="conversation_move_category_search">搜索分类</string>
+    <string name="conversation_move_category_create">新建分类并移入</string>
+    <string name="conversation_move_category_name">分类名称</string>
 </resources>
