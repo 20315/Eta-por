@@ -476,9 +476,21 @@ internal fun AgentChatInputBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 8.dp, end = 4.dp),
-                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 左上角：最近一次响应的平均输出速度（和内存百分比同一行，靠最左）。
+                    contextUsage.averageTokensPerSecond?.let { speed ->
+                        val speedText = java.text.NumberFormat.getNumberInstance()
+                            .apply { maximumFractionDigits = 1 }
+                            .format(speed)
+                        Text(
+                            text = "$speedText tok/s",
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                     // 入口常驻：数据还没加载完时也要能点开看，否则会像“功能没生效”。
                     run {
                         Text(
@@ -601,27 +613,6 @@ internal fun AgentChatInputBar(
                                 onAttachFilePath = onAttachFilePath,
                             )
 
-                            // 输出速度跟 ＋ 放在输入栏这一排；上下文用量由右侧圆环按钮负责。
-                            // 这一格是整排唯一的可收缩位：宽度先被右侧组扣掉，剩下多少用多少，
-                            // 不够就先省略文字，低于下限整枚消失，绝不会再压到发送按钮。
-                            if (showContextUsage) {
-                                val speedText = contextUsage.averageTokensPerSecond?.let { speed ->
-                                    java.text.NumberFormat.getNumberInstance()
-                                        .apply { maximumFractionDigits = 1 }
-                                        .format(speed)
-                                }
-                                BoxWithConstraints(modifier = Modifier.weight(1f, fill = false)) {
-                                    if (speedText != null && maxWidth >= SpeedCapsuleMinWidth) {
-                                        StatusCapsule(
-                                            text = "$speedText tok/s",
-                                            modifier = Modifier.padding(start = 6.dp),
-                                            description = stringResource(R.string.conversation_speed_description, speedText),
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(2.dp))
 
                             if (availableReasoningEfforts.isNotEmpty()) {
                                 ThinkingEffortChip(

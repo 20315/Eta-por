@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -245,34 +246,39 @@ internal fun MarkdownFileDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 复用「会话导航」的底部弹层：从底部滑入、上方留出背景、下拉收起，不占满全屏。
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val sheetHeight = with(density) {
-        androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp()
-    } * 0.9f
-
-    OverlayBottomSheet(
-        show = visible,
-        title = name,
+    // 普通全屏 Dialog：OverlayBottomSheet 嵌在工作区浏览器这类 sheet 内部时挂不上窗口
+    // （点了没反应），Dialog 在任意层级都能显示；顶部仍给标题栏。
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = { requestClose() },
-        insideMargin = DpSize(0.dp, 0.dp),
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(sheetHeight),
+                .fillMaxSize()
+                .background(MiuixTheme.colorScheme.surface)
+                .statusBarsPadding()
+                .navigationBarsPadding(),
         ) {
-            Column(
+            // 标题：文件名一行 + 原有的路径与操作行
+            Text(
+                text = name,
+                style = MiuixTheme.textStyles.body1,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .navigationBarsPadding(),
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, top = 12.dp, end = 20.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
                     Text(
                         text = path,
                         style = MiuixTheme.textStyles.footnote2,
@@ -353,6 +359,10 @@ internal fun MarkdownFileDialog(
             if (menuOpen) {
                 Box(
                     modifier = Modifier
+                        .fillMaxSize(),
+                ) {
+                Box(
+                    modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.18f))
                         .clickable { menuOpen = false },
@@ -401,6 +411,7 @@ internal fun MarkdownFileDialog(
         }
     }
 }
+
 /** 菜单行：图标 + 文字，宽度由内容决定，不撑满屏幕（与对话页溢出菜单一致）。 */
 @Composable
 private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
