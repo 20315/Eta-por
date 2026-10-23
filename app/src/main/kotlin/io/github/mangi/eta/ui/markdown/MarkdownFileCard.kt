@@ -85,6 +85,11 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleSurface
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.DropdownImpl
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.window.WindowListPopup
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 
@@ -249,7 +254,9 @@ internal fun MarkdownFileDialog(
     val cardHeight = (windowHeight * 0.88f).toInt()
 
     // 内容只写一份，两种外壳共用。
-    val body: @Composable ColumnScope.() -> Unit = {
+    val body: @Composable () -> Unit = {
+        Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
         // 标题行：文件名 +（与文件名不同时）路径，右侧编辑与更多
         Row(
             modifier = Modifier
@@ -336,31 +343,34 @@ internal fun MarkdownFileDialog(
                 },
             )
         }
-        // 更多菜单：淡入淡出，收起时不闪
-        AnimatedVisibility(
-            visible = menuOpen,
-            enter = fadeIn(tween(120)),
-            exit = fadeOut(tween(100)),
+        }
+        // 更多菜单：与对话页一致的弹出层（WindowListPopup），不占布局、不会挤压正文
+        WindowListPopup(
+            show = menuOpen,
+            alignment = PopupPositionProvider.Align.BottomEnd,
+            onDismissRequest = { menuOpen = false },
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { menuOpen = false },
-                )
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 44.dp, end = 12.dp)
-                        .widthIn(min = 196.dp)
-                        .squircleSurface(color = MiuixTheme.colorScheme.surfaceContainerHigh, cornerRadius = 16.dp)
-                        .padding(vertical = 6.dp),
-                ) {
-                    MenuRow(Icons.Rounded.Download, "保存到设备") {
+            ListPopupColumn {
+                DropdownImpl(
+                    item = DropdownItem(text = "保存到设备", icon = { modifier ->
+                        Icon(Icons.Rounded.Download, contentDescription = null, modifier = modifier.size(18.dp))
+                    }),
+                    optionSize = 3,
+                    isSelected = false,
+                    index = 0,
+                    onSelectedIndexChange = {
                         menuOpen = false
                         saveToDevice.launch(name)
-                    }
-                    MenuRow(Icons.AutoMirrored.Rounded.OpenInNew, "系统打开") {
+                    },
+                )
+                DropdownImpl(
+                    item = DropdownItem(text = "系统打开", icon = { modifier ->
+                        Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = modifier.size(18.dp))
+                    }),
+                    optionSize = 3,
+                    isSelected = false,
+                    index = 1,
+                    onSelectedIndexChange = {
                         menuOpen = false
                         runCatching {
                             val uri = stageShareFile(context, name, text)
@@ -371,8 +381,16 @@ internal fun MarkdownFileDialog(
                                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                         }
-                    }
-                    MenuRow(Icons.Rounded.Share, "分享文件") {
+                    },
+                )
+                DropdownImpl(
+                    item = DropdownItem(text = "分享文件", icon = { modifier ->
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = modifier.size(18.dp))
+                    }),
+                    optionSize = 3,
+                    isSelected = false,
+                    index = 2,
+                    onSelectedIndexChange = {
                         menuOpen = false
                         runCatching {
                             val uri = stageShareFile(context, name, text)
@@ -386,9 +404,10 @@ internal fun MarkdownFileDialog(
                                 ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                         }
-                    }
-                }
+                    },
+                )
             }
+        }
         }
     }
 
@@ -402,7 +421,7 @@ internal fun MarkdownFileDialog(
             insideMargin = DpSize(0.dp, 0.dp),
         ) {
             Box(modifier = Modifier.fillMaxWidth().height(sheetHeight)) {
-                Column(modifier = Modifier.fillMaxSize().navigationBarsPadding(), content = body)
+                Box(modifier = Modifier.fillMaxSize().navigationBarsPadding()) { body() }
             }
         }
     } else {
