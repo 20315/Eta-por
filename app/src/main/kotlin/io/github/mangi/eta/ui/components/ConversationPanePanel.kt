@@ -53,6 +53,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.zIndex
@@ -199,6 +200,7 @@ internal fun ConversationPanePanel(
     var contentRootTop by remember { mutableFloatStateOf(0f) }
     var dragPointerRootY by remember { mutableFloatStateOf(0f) }
     var menuConversationId by remember { mutableStateOf<String?>(null) }
+    var swallowClickConversationId by remember { mutableStateOf<String?>(null) }
     val dragScope = rememberCoroutineScope()
     var dragMenuJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // 悬停高亮：拖动时命中的分组标题会亮起，让落点可见。
@@ -334,6 +336,7 @@ internal fun ConversationPanePanel(
                                             // 已选中的会话右侧有三点菜单，长按不再抢它。
                                             if (conversation.id != state.selectedConversationId) {
                                                 menuConversationId = conversation.id
+                                                swallowClickConversationId = conversation.id
                                             }
                                         }
                                     }
@@ -441,9 +444,9 @@ internal fun ConversationPanePanel(
                                 batchMode = batchMode,
                                 checked = conversation.id in selectedIds,
                                 onClick = {
-                                    if (menuConversationId == conversation.id) {
-                                        // 长按刚弹出的菜单：这一下点击只关菜单，不要顺带切会话。
-                                        menuConversationId = null
+                                    if (swallowClickConversationId == conversation.id) {
+                                        // 长按刚弹出的菜单：这一下点击吞掉，既不切会话也不关菜单。
+                                        swallowClickConversationId = null
                                     } else if (batchMode) {
                                         selectedIds = if (conversation.id in selectedIds) selectedIds - conversation.id else selectedIds + conversation.id
                                     } else {
@@ -462,6 +465,32 @@ internal fun ConversationPanePanel(
                                 onDismissMenu = { if (menuConversationId == conversation.id) menuConversationId = null },
                             )
                         }
+                    }
+                }
+            }
+            draggingConversation?.let { ghostConversation ->
+                val info = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.key == ghostConversation.id }
+                if (info != null) {
+                    // 浮层用 Popup 画：脱离 LazyColumn 的裁剪和绘制顺序，拖动时不会被下面的行盖住。
+                    androidx.compose.ui.window.Popup(
+                        offset = androidx.compose.ui.unit.IntOffset(
+                            x = 0,
+                            y = (contentRootTop + info.offset + dragTranslateY).toInt(),
+                        ),
+                        properties = androidx.compose.ui.window.PopupProperties(
+                            focusable = false,
+                            clippingEnabled = false,
+                            dismissOnBackPress = false,
+                            dismissOnClickOutside = false,
+                        ),
+                    ) {
+                        ConversationDragGhost(
+                            conversation = ghostConversation,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = ConversationPanelMetrics.PaneHorizontalPadding),
+                        )
                     }
                 }
             }
@@ -804,12 +833,7 @@ private fun ConversationTextRow(
                         Color.Transparent
                     },
                 )
-                .graphicsLayer {
-                    translationY = dragTranslation
-                    scaleX = if (dragging) 1.02f else 1f
-                    scaleY = if (dragging) 1.02f else 1f
-                    shadowElevation = if (dragging) 8f else 0f
-                }
+                .alpha(if (dragging) 0f else 1f)
                 .clickable(onClick = onClick)
                 .padding(
                     horizontal = ConversationPanelMetrics.RowHorizontalPadding,
@@ -1052,6 +1076,35 @@ private fun PaneShortcut(
         Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = MiuixTheme.colorScheme.onSurface)
         Text(label, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+
+/** 拖动时跟着手指走的一份行副本（不改列表布局，只做视觉反馈）。 */
+@Composable
+private fun ConversationDragGhost(
+    conversation: ConversationSummaryUi,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .heightIn(min = ConversationPanelMetrics.RowMinHeight)
+            .clip(RoundedCornerShape(ConversationPanelMetrics.RowCornerRadius))
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .padding(
+                horizontal = ConversationPanelMetrics.RowHorizontalPadding,
+                vertical = ConversationPanelMetrics.RowVerticalPadding,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = conversation.title.ifBlank { stringResource(R.string.conversation_unnamed) },
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
