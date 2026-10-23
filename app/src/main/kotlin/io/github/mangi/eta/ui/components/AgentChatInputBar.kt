@@ -472,6 +472,9 @@ internal fun AgentChatInputBar(
                     )
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
+                // @ 引用面板打开时收起这行状态，别让它压住输入内容。
+                val mentionPanelOpen = mentionQuery != null && referenceCandidates.isNotEmpty()
+                if (!mentionPanelOpen) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -532,6 +535,7 @@ internal fun AgentChatInputBar(
                             .clickable { showMemorySheet = true }
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                     )
+                }
                 }
                 MemoryUsageSheet(show = showMemorySheet, onDismiss = { showMemorySheet = false })
                 ToolAccessSheet(

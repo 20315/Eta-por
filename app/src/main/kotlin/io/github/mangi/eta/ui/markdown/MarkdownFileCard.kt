@@ -19,6 +19,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
@@ -198,6 +205,8 @@ internal fun MarkdownFileDialog(
     var reloadTick by remember(path) { mutableStateOf(0) }
     var dirty by remember(path) { mutableStateOf(false) }
     val name = path.substringAfterLast('/').ifBlank { path }
+    @Suppress("DEPRECATION")
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     /** [animated] = false 表示界面已经滑出屏幕，不必再播退场动画（拖动关闭走这条）。 */
     fun requestClose(animated: Boolean = true) {
@@ -315,9 +324,36 @@ internal fun MarkdownFileDialog(
                             tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
+                    val menuGapPx = with(density) { 12.dp.roundToPx() }
+                    val menuPositionProvider = remember(menuGapPx) {
+                        object : PopupPositionProvider {
+                            override fun getMargins(): PaddingValues = PaddingValues(0.dp)
+
+                            override fun calculatePosition(
+                                anchorBounds: IntRect,
+                                windowBounds: IntRect,
+                                layoutDirection: LayoutDirection,
+                                popupContentSize: IntSize,
+                                popupMargin: IntRect,
+                                alignment: PopupPositionProvider.Align,
+                            ): IntOffset {
+                                // 右缘贴住锚点（⋯ 按钮），并往下挪一点，避免压住标题
+                                val maxX = (windowBounds.right - popupContentSize.width).coerceAtLeast(windowBounds.left)
+                                val x = (anchorBounds.right - popupContentSize.width).coerceIn(windowBounds.left, maxX)
+                                val below = anchorBounds.bottom + menuGapPx
+                                val above = anchorBounds.top - popupContentSize.height - menuGapPx
+                                val y = when {
+                                    below + popupContentSize.height <= windowBounds.bottom -> below
+                                    above >= windowBounds.top -> above
+                                    else -> (windowBounds.bottom - popupContentSize.height).coerceAtLeast(windowBounds.top)
+                                }
+                                return IntOffset(x, y)
+                            }
+                        }
+                    }
                     WindowListPopup(
                         show = menuOpen,
-                        popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
+                        popupPositionProvider = menuPositionProvider,
                         alignment = PopupPositionProvider.Align.BottomEnd,
                         onDismissRequest = { menuOpen = false },
                     ) {
@@ -393,13 +429,22 @@ internal fun MarkdownFileDialog(
                     }
                 }
             }
-            // 正文占满剩余高度，独立滚动
+            // 正文占满剩余高度，独立滚动；长按复制整篇（预览页不弹选区菜单）
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    .pointerInput(text) {
+                        detectTapGestures(
+                            onLongPress = {
+                                @Suppress("DEPRECATION")
+                                clipboard.setText(AnnotatedString(text))
+                                Toast.makeText(context, "已复制整篇 Markdown", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    },
             ) {
                 StaticMarkdown(
                     content = text,
