@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
@@ -40,7 +39,8 @@ import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.layout.DialogDefaults
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 分类色条：按顺序取色，和侧栏分类标题的竖条同一套视觉语言。 */
@@ -64,11 +64,11 @@ internal fun ConversationMoveCategorySheet(
     onCreateAndPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    OverlayBottomSheet(
+    WindowDialog(
         show = conversationTitle != null,
+        cornerRadius = DialogDefaults.CornerRadius,
         title = stringResource(R.string.conversation_category_move),
         onDismissRequest = onDismiss,
-        insideMargin = DpSize(0.dp, 0.dp),
     ) {
         if (conversationTitle != null) {
             val shownTitle = conversationTitle.ifBlank { stringResource(R.string.conversation_unnamed) }

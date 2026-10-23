@@ -504,7 +504,10 @@ fun AgentAppRoot(
             onRenameCategory = { id, name -> agentState.renameConversationCategory(id, name) },
             onMoveCategory = { id, delta -> agentState.moveConversationCategory(id, delta) },
             onDeleteCategoryConfirmed = { id -> agentState.deleteConversationCategory(id) },
-            onMoveToCategory = { conversation -> categoryMoveTarget = conversation },
+            onMoveToCategory = { conversation ->
+                io.github.mangi.eta.core.AndroidAgentLogger.info("Sidebar: open move-to-category for ${conversation.id}")
+                categoryMoveTarget = conversation
+            },
             onDropConversationToCategory = { conversation, categoryId ->
                 agentState.setConversationCategory(conversation.id, categoryId)
             },
