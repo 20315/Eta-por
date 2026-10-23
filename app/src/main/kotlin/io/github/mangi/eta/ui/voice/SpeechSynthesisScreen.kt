@@ -60,7 +60,8 @@ internal fun SpeechSynthesisScreen(onBack: () -> Unit) {
                 )
             }
         }
-        if (settings.tts == TtsProvider.QWEN || settings.tts == TtsProvider.DOUBAO) {
+        val cloudProvider = settings.tts != TtsProvider.NONE && settings.tts != TtsProvider.SYSTEM
+        if (cloudProvider) {
             item(key = "connection") {
                 SpeechConnectionSection(store, synthesis = true)
             }
