@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -179,26 +180,26 @@ internal fun ConversationPanePanel(
         stateSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() }),
     ) { mutableStateOf(emptySet<String>()) }
     // 拖放：记录每个分组标题的屏幕范围，拖动会话时据此判断落点。
-    val categoryBounds = remember { mutableStateMapOf<String?, androidx.compose.ui.geometry.Rect>() }
+    // 拖放：只登记「分类」标题的范围（置顶/今天/日期这些分区不是落点）。
+    // 未分类分区没有 id，用空串作哨兵，避免和「没命中任何标题」混为一谈。
+    val categoryBounds = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
     var draggingConversation by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     // 悬停高亮：拖动时命中的分组标题会亮起，让落点可见。
-    var hoverCategoryId by remember { mutableStateOf<String?>(null) }
-    var hoverActive by remember { mutableStateOf(false) }
-    fun hitCategory(y: Float) =
-        categoryBounds.entries.firstOrNull { y >= it.value.top && y <= it.value.bottom }
+    var hoverCategoryKey by remember { mutableStateOf<String?>(null) }
+    fun hitCategory(y: Float): String? =
+        categoryBounds.entries
+            .filter { y >= it.value.top && y <= it.value.bottom }
+            .minByOrNull { entry -> kotlin.math.abs(entry.value.center.y - y) }
+            ?.key
     fun updateHover(y: Float) {
-        val hit = hitCategory(y)
-        hoverActive = hit != null
-        hoverCategoryId = hit?.key
+        hoverCategoryKey = hitCategory(y)
     }
     fun dropAt(y: Float) {
-        hoverActive = false
-        hoverCategoryId = null
+        hoverCategoryKey = null
         val conv = draggingConversation ?: return
         draggingConversation = null
-        // 命中任一分组标题才算有效落点；key 为 null 的内置分区表示「移出分组」。
-        val hit = categoryBounds.entries.firstOrNull { y >= it.value.top && y <= it.value.bottom } ?: return
-        onDropConversationToCategory?.invoke(conv, hit.key)
+        val key = hitCategory(y) ?: return
+        onDropConversationToCategory?.invoke(conv, key.takeIf { it.isNotEmpty() })
     }
         val capabilities = rememberDeviceCapabilities()
     val groups = remember(state.conversations, state.categories) {
@@ -324,9 +325,13 @@ internal fun ConversationPanePanel(
                                     collapsedSections = if (collapsed) collapsedSections - sectionKey else collapsedSections + sectionKey
                                 },
                                 categoryId = (group.section as? ConversationDrawerSection.Category)?.id,
-                            onHeaderBounds = { id, rect -> categoryBounds[id] = rect },
-                            highlighted = hoverActive &&
-                                hoverCategoryId == (group.section as? ConversationDrawerSection.Category)?.id,
+                            onHeaderBounds = { _, rect ->
+                                (group.section as? ConversationDrawerSection.Category)?.let { category ->
+                                    categoryBounds[category.id ?: ""] = rect
+                                }
+                            },
+                            highlighted = hoverCategoryKey != null &&
+                                hoverCategoryKey == (group.section as? ConversationDrawerSection.Category)?.let { it.id ?: "" },
                                 onEditCategory = { id, currentName ->
                                     categoryEditing = CategoryEditTarget.Rename(id, currentName)
                                 },
@@ -692,6 +697,8 @@ private fun ConversationTextRow(
     var rowTop by remember { mutableFloatStateOf(0f) }
     var lastDropY by remember { mutableFloatStateOf(0f) }
     var dragLift by remember { mutableFloatStateOf(0f) }
+    var dragDistance by remember { mutableFloatStateOf(0f) }
+    val longPressMenuThresholdPx = with(LocalDensity.current) { 6.dp.toPx() }
     val hapticFeedback = LocalHapticFeedback.current
 
     Box(modifier = Modifier.fillMaxWidth()) {
@@ -718,15 +725,26 @@ private fun ConversationTextRow(
                 .onGloballyPositioned { coords -> rowTop = coords.boundsInRoot().top }
                 .pointerInput(conversation.id) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { onDragStart() },
+                        onDragStart = {
+                            dragDistance = 0f
+                            lastDropY = rowTop
+                            onDragStart()
+                        },
                         onDrag = { change, dragAmount ->
+                            dragDistance += kotlin.math.abs(dragAmount.x) + kotlin.math.abs(dragAmount.y)
                             dragLift += dragAmount.y
                             lastDropY = rowTop + change.position.y
                             onDragAt(lastDropY)
                         },
                         onDragEnd = {
                             dragLift = 0f
-                            onDropAt(lastDropY)
+                            if (dragDistance < longPressMenuThresholdPx) {
+                                // 长按后没怎么动：当作打开操作菜单（里面有「移动到分类」）。
+                                onDragCancel()
+                                showActionMenu = true
+                            } else {
+                                onDropAt(lastDropY)
+                            }
                         },
                         onDragCancel = {
                             dragLift = 0f
@@ -1015,9 +1033,8 @@ private fun List<ConversationSummaryUi>.groupForDrawer(categories: List<Pair<Str
             )
         }
         val loose = rest.filter { it.categoryId == null || !known.containsKey(it.categoryId) }
-        if (loose.isNotEmpty()) {
-            categorizedGroups += ConversationDrawerGroup(ConversationDrawerSection.Category(null, ""), loose)
-        }
+        // 未分类组始终保留：空分类都会显示，未分类也一样，否则会话全部分类后就没法拖回去了。
+        categorizedGroups += ConversationDrawerGroup(ConversationDrawerSection.Category(null, ""), loose)
         return categorizedGroups
     }
     if (isEmpty()) return emptyList()
