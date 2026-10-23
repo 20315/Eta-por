@@ -190,7 +190,15 @@ internal fun ConversationPanePanel(
     // 拖放：只登记「分类」标题的范围（置顶/今天/日期这些分区不是落点）。
     // 未分类分区没有 id，用空串作哨兵，避免和「没命中任何标题」混为一谈。
     val categoryBounds = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    // 拖拽状态挂在列表容器上（参考 Google LazyColumnDragAndDropDemo 的做法：
+    // 手势在容器上统一处理，行只负责按 offset 位移，避免每行各自抢手势导致卡死）。
     var draggingConversation by remember { mutableStateOf<ConversationSummaryUi?>(null) }
+    var dragTranslateY by remember { mutableFloatStateOf(0f) }
+    var contentRootTop by remember { mutableFloatStateOf(0f) }
+    var dragPointerRootY by remember { mutableFloatStateOf(0f) }
+    var menuConversationId by remember { mutableStateOf<String?>(null) }
+    val dragScope = rememberCoroutineScope()
+    var dragMenuJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // 悬停高亮：拖动时命中的分组标题会亮起，让落点可见。
     var hoverCategoryKey by remember { mutableStateOf<String?>(null) }
     fun hitCategory(y: Float): String? =
@@ -206,8 +214,16 @@ internal fun ConversationPanePanel(
         hoverCategoryKey = null
         val conv = draggingConversation ?: return
         draggingConversation = null
+        dragTranslateY = 0f
         val key = hitCategory(y) ?: return
         onDropConversationToCategory?.invoke(conv, key.takeIf { it.isNotEmpty() })
+    }
+    fun cancelDrag() {
+        hoverCategoryKey = null
+        draggingConversation = null
+        dragTranslateY = 0f
+        dragMenuJob?.cancel()
+        dragMenuJob = null
     }
         val capabilities = rememberDeviceCapabilities()
     val groups = remember(state.conversations, state.categories) {
@@ -272,7 +288,48 @@ internal fun ConversationPanePanel(
                     )
                     .padding(horizontal = ConversationPanelMetrics.PaneHorizontalPadding)
                     .scrollEndHaptic()
-                    .overScrollVertical(),
+                    .overScrollVertical()
+                    .onGloballyPositioned { coords -> contentRootTop = coords.boundsInRoot().top }
+                    .pointerInput(listState, state.conversations) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { offset ->
+                                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+                                    offset.y.toInt() in item.offset..(item.offset + item.size)
+                                }
+                                val key = info?.key as? String
+                                val conversation = key?.let { id -> state.conversations.firstOrNull { it.id == id } }
+                                if (conversation != null) {
+                                    draggingConversation = conversation
+                                    dragTranslateY = 0f
+                                    dragPointerRootY = offset.y + contentRootTop
+                                    dragMenuJob?.cancel()
+                                    // 长按后 280ms 内没动：当成长按菜单（不需要松手）。
+                                    dragMenuJob = dragScope.launch {
+                                        kotlinx.coroutines.delay(280)
+                                        if (dragTranslateY == 0f && draggingConversation?.id == conversation.id) {
+                                            draggingConversation = null
+                                            hoverCategoryKey = null
+                                            menuConversationId = conversation.id
+                                        }
+                                    }
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                if (draggingConversation == null) return@detectDragGesturesAfterLongPress
+                                if (dragAmount.y != 0f) dragMenuJob?.cancel()
+                                change.consume()
+                                dragTranslateY += dragAmount.y
+                                dragPointerRootY = change.position.y + contentRootTop
+                                updateHover(dragPointerRootY)
+                            },
+                            onDragEnd = {
+                                dragMenuJob?.cancel()
+                                dragMenuJob = null
+                                if (draggingConversation != null) dropAt(dragPointerRootY)
+                            },
+                            onDragCancel = { cancelDrag() },
+                        )
+                    },
                 contentPadding = PaddingValues(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(ConversationPanelMetrics.RowGap),
                 overscrollEffect = null,
@@ -370,10 +427,11 @@ internal fun ConversationPanePanel(
                                 onDelete = { onConversationDelete(conversation) },
                                 onPin = { onConversationPin(conversation) },
                                 onMoveToCategory = { onMoveToCategory(conversation) },
-                            onDragStart = { draggingConversation = conversation },
-                            onDragAt = { y -> updateHover(y) },
-                            onDropAt = { y -> dropAt(y) },
-                            onDragCancel = { draggingConversation = null },
+                                dragging = draggingConversation?.id == conversation.id,
+                                dragTranslation = if (draggingConversation?.id == conversation.id) dragTranslateY else 0f,
+                                menuOpen = menuConversationId == conversation.id,
+                                onRequestMenu = { menuConversationId = conversation.id },
+                                onDismissMenu = { if (menuConversationId == conversation.id) menuConversationId = null },
                             )
                         }
                     }
@@ -695,21 +753,16 @@ private fun ConversationTextRow(
     onDelete: () -> Unit,
     onPin: () -> Unit,
     onMoveToCategory: () -> Unit,
-    onDragStart: () -> Unit = {},
-    onDragAt: (Float) -> Unit = {},
-    onDropAt: (Float) -> Unit = {},
-    onDragCancel: () -> Unit = {},
+    dragging: Boolean = false,
+    dragTranslation: Float = 0f,
+    menuOpen: Boolean = false,
+    onRequestMenu: () -> Unit = {},
+    onDismissMenu: () -> Unit = {},
 ) {
-    var showActionMenu by remember { mutableStateOf(false) }
     // 本节自身在屏幕上的纵向位置：拖动时用它把手指坐标换算成屏幕坐标，判断落点。
-    var rowTop by remember { mutableFloatStateOf(0f) }
-    var lastDropY by remember { mutableFloatStateOf(0f) }
-    var dragLift by remember { mutableFloatStateOf(0f) }
-    var dragDistance by remember { mutableFloatStateOf(0f) }
-    val rowScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
 
-    Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragLift != 0f) 2f else 0f)) {
+    Box(modifier = Modifier.fillMaxWidth().zIndex(if (dragging) 1f else 0f)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -724,21 +777,12 @@ private fun ConversationTextRow(
                     },
                 )
                 .graphicsLayer {
-                    translationY = dragLift
-                    val lift = dragLift != 0f
-                    scaleX = if (lift) 1.02f else 1f
-                    scaleY = if (lift) 1.02f else 1f
-                    shadowElevation = if (lift) 8f else 0f
+                    translationY = dragTranslation
+                    scaleX = if (dragging) 1.02f else 1f
+                    scaleY = if (dragging) 1.02f else 1f
+                    shadowElevation = if (dragging) 8f else 0f
                 }
-                .onGloballyPositioned { coords -> rowTop = coords.boundsInRoot().top }
-                // 长按到系统时限即弹菜单（不需要松手）；拖拽入口先撤掉，避免列表卡死。
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showActionMenu = true
-                    },
-                )
+                .clickable(onClick = onClick)
                 .padding(
                     horizontal = ConversationPanelMetrics.RowHorizontalPadding,
                     vertical = ConversationPanelMetrics.RowVerticalPadding,
@@ -802,7 +846,7 @@ private fun ConversationTextRow(
                 IconButton(
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showActionMenu = true
+                        onRequestMenu()
                     },
                     modifier = Modifier.size(28.dp),
                 ) {
@@ -816,10 +860,10 @@ private fun ConversationTextRow(
         }
 
         WindowListPopup(
-            show = showActionMenu,
+            show = menuOpen,
             popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
             alignment = PopupPositionProvider.Align.BottomEnd,
-            onDismissRequest = { showActionMenu = false },
+            onDismissRequest = onDismissMenu,
         ) {
             val pinText = stringResource(if (conversation.isPinned) R.string.action_unpin else R.string.action_pin)
             val moveText = stringResource(R.string.conversation_category_move)
@@ -896,43 +940,53 @@ private fun ConversationTextRow(
             )
             ListPopupColumn {
                 DropdownImpl(
-                    item = pinItem,
-                    optionSize = 4,
+                    item = moveItem,
+                    optionSize = 5,
                     isSelected = false,
                     index = 0,
                     onSelectedIndexChange = {
-                        showActionMenu = false
+                        onDismissMenu()
+                        onMoveToCategory()
+                    },
+                )
+                DropdownImpl(
+                    item = pinItem,
+                    optionSize = 5,
+                    isSelected = false,
+                    index = 1,
+                    onSelectedIndexChange = {
+                        onDismissMenu()
                         onPin()
                     },
                 )
                 DropdownImpl(
                     item = renameItem,
-                    optionSize = 4,
+                    optionSize = 5,
                     isSelected = false,
-                    index = 1,
+                    index = 2,
                     onSelectedIndexChange = {
-                        showActionMenu = false
+                        onDismissMenu()
                         onRename()
                     },
                 )
                 DropdownImpl(
                     item = exportItem,
-                    optionSize = 4,
+                    optionSize = 5,
                     isSelected = false,
-                    index = 2,
+                    index = 3,
                     onSelectedIndexChange = {
-                        showActionMenu = false
+                        onDismissMenu()
                         onExport()
                     },
                 )
                 DropdownImpl(
                     item = deleteItem,
-                    optionSize = 4,
+                    optionSize = 5,
                     isSelected = false,
-                    index = 3,
+                    index = 4,
                     dropdownColors = deleteColors,
                     onSelectedIndexChange = {
-                        showActionMenu = false
+                        onDismissMenu()
                         onDelete()
                     },
                 )
